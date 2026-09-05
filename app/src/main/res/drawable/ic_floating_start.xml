@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="38dp"
+    android:height="38dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Outer Circle Ring with Dynamic Primary Color -->
+    <path
+        android:pathData="M 54,6 A 48,48 0 1,0 54,102 A 48,48 0 1,0 54,6 Z M 54,20 A 34,34 0 1,1 54,88 A 34,34 0 1,1 54,20 Z"
+        android:fillColor="?attr/colorPrimary"/>
+
+    <!-- Center Vibrant Red Recording Dot -->
+    <path
+        android:pathData="M 54,34 A 20,20 0 1,0 54,74 A 20,20 0 1,0 54,34 Z"
+        android:fillColor="#FF3B30"/>
+</vector>

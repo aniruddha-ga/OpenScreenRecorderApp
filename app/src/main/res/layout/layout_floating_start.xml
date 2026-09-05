@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/rootCard"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    app:cardCornerRadius="100dp"
+    app:cardElevation="0dp"
+    app:cardBackgroundColor="?attr/colorSurface"
+    android:alpha="0.95"
+    app:strokeWidth="1dp"
+    app:strokeColor="?attr/colorOutlineVariant">
+
+    <LinearLayout
+        android:id="@+id/mainContainer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp">
+
+        <ImageView
+            android:id="@+id/dragHandle"
+            android:layout_width="18dp"
+            android:layout_height="26dp"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="8dp"
+            android:src="@drawable/ic_drag_handle"
+            app:tint="?attr/colorOnSurfaceVariant"
+            android:contentDescription="Drag Handle" />
+
+        <com.google.android.material.divider.MaterialDivider
+            android:layout_width="1dp"
+            android:layout_height="26dp"
+            android:layout_marginEnd="10dp"
+            app:dividerColor="?attr/colorOutlineVariant" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnStart"
+            style="@style/Widget.Material3Expressive.Button.IconButton.Standard"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            app:cornerRadius="100dp"
+            app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Full"
+            app:iconSize="38dp"
+            app:icon="@drawable/ic_floating_start"
+            app:iconTint="@null"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp"
+            android:padding="0dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:insetLeft="0dp"
+            android:insetRight="0dp"/>
+
+        <com.google.android.material.divider.MaterialDivider
+            android:layout_width="1dp"
+            android:layout_height="26dp"
+            android:layout_marginStart="10dp"
+            android:layout_marginEnd="10dp"
+            app:dividerColor="?attr/colorOutlineVariant" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnClose"
+            style="@style/Widget.Material3Expressive.Button.IconButton.Standard"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
+            app:cornerRadius="100dp"
+            app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Full"
+            app:iconSize="22dp"
+            app:iconTint="?attr/colorOnSurfaceVariant"
+            app:icon="@drawable/ic_close"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp"
+            android:padding="0dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:insetLeft="0dp"
+            android:insetRight="0dp"/>
+
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

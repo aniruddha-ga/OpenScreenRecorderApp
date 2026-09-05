@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/rootCard"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    app:cardCornerRadius="100dp"
+    app:cardElevation="0dp"
+    app:cardBackgroundColor="?attr/colorSurface"
+    android:alpha="0.95"
+    app:strokeWidth="1dp"
+    app:strokeColor="?attr/colorOutlineVariant">
+
+    <LinearLayout
+        android:id="@+id/mainContainer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp">
+
+        <ImageView
+            android:id="@+id/dragHandle"
+            android:layout_width="16dp"
+            android:layout_height="22dp"
+            android:layout_marginStart="2dp"
+            android:layout_marginEnd="8dp"
+            android:src="@drawable/ic_drag_handle"
+            app:tint="?attr/colorOnSurfaceVariant"
+            android:contentDescription="Drag Handle" />
+
+        <com.google.android.material.divider.MaterialDivider
+            android:layout_width="1dp"
+            android:layout_height="22dp"
+            android:layout_marginEnd="10dp"
+            app:dividerColor="?attr/colorOutlineVariant" />
+
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/redDot"
+            android:layout_width="10dp"
+            android:layout_height="10dp"
+            android:layout_marginEnd="10dp"
+            app:cardCornerRadius="5dp"
+            app:cardElevation="0dp"
+            app:strokeWidth="0dp"
+            app:cardBackgroundColor="?attr/colorError"/>
+
+        <Chronometer
+            android:id="@+id/timer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="?attr/colorOnSurface"
+            android:layout_marginEnd="10dp"/>
+
+        <LinearLayout
+            android:id="@+id/controlsContainer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <com.google.android.material.divider.MaterialDivider
+                android:layout_width="1dp"
+                android:layout_height="22dp"
+                android:layout_marginEnd="6dp"
+                app:dividerColor="?attr/colorOutlineVariant" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnPause"
+                style="@style/Widget.Material3Expressive.Button.IconButton.Standard"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                app:iconSize="20dp"
+                app:iconTint="?attr/colorOnSurfaceVariant"
+                app:icon="@drawable/ic_pause"/>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnStop"
+                style="@style/Widget.Material3Expressive.Button.IconButton.Filled"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:layout_marginStart="4dp"
+                app:iconSize="20dp"
+                app:iconTint="?attr/colorOnError"
+                android:backgroundTint="?attr/colorError"
+                app:icon="@drawable/ic_stop"/>
+        </LinearLayout>
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>
