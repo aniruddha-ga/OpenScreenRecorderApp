@@ -14,7 +14,7 @@ This app is made because my device do not have any built-in screen recorder and 
 
 ### 🎙️ Audio Recording Options
 * **Microphone Recording:** Capture voiceovers and ambient audio via microphone.
-* **System Audio Capture:** Record internal device sound (apps, games, media) using Android's `AudioPlaybackCapture` API.
+* **System Audio Capture:** Record internal device sound (apps, games, media).
 * **Dual Audio Mixing:** Record and mix both **Microphone** and **System Audio** simultaneously into a clean AAC audio stream.
 
 ---
