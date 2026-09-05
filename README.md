@@ -2,7 +2,7 @@
 This app is made because my device do not have any built-in screen recorder and most of the Play Store Apps collects data and show ads.
 
 
-# 📹 Open Screen Recorder — Features Overview
+# Open Screen Recorder — Features Overview
 
 ### 🎬 Screen Recording & Performance
 * **Flexible Video Quality & Resolutions:** Supports dynamic resolution scaling maintaining your device aspect ratio:
