@@ -35,6 +35,7 @@ import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
@@ -72,6 +73,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var configManager: ConfigManager
     private lateinit var deleteLauncher: ActivityResultLauncher<IntentSenderRequest>
+    private lateinit var playerLauncher: ActivityResultLauncher<Intent>
 
     private var videosState = mutableStateOf<List<VideoFile>>(emptyList())
     private var isRecordingState = mutableStateOf(ScreenRecordService.isRecording)
@@ -110,6 +112,12 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         configManager = ConfigManager(this)
 
+        playerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == RESULT_OK) {
+                loadVideos()
+            }
+        }
+
         deleteLauncher = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
             if (result.resultCode == RESULT_OK) {
                 Toast.makeText(this, "Recording deleted", Toast.LENGTH_SHORT).show()
@@ -130,7 +138,7 @@ class MainActivity : AppCompatActivity() {
                     onSettingsClick = {
                         startActivity(Intent(this, SettingsActivity::class.java))
                     },
-                    onVideoClick = { uri -> openVideo(uri) },
+                    onVideoClick = { video -> openVideo(video) },
                     onRenameVideo = { video, newName -> renameVideo(video, newName) },
                     onDeleteVideo = { video -> deleteVideo(video) }
                 )
@@ -141,15 +149,23 @@ class MainActivity : AppCompatActivity() {
         performFullPermissionCheck()
     }
 
-    private fun openVideo(uri: Uri) {
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "video/mp4")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    private fun openVideo(video: VideoFile) {
+        val intent = Intent(this, PlayerActivity::class.java).apply {
+            putExtra(PlayerActivity.EXTRA_VIDEO_URI, video.uri.toString())
+            putExtra(PlayerActivity.EXTRA_VIDEO_TITLE, video.name)
         }
         try {
-            startActivity(intent)
-        } catch (e: Exception) {
-            Toast.makeText(this, getString(R.string.VideoAdapter_toast_no_player) + e.message, Toast.LENGTH_SHORT).show()
+            playerLauncher.launch(intent)
+        } catch (_: Exception) {
+            val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(video.uri, "video/mp4")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            try {
+                startActivity(fallbackIntent)
+            } catch (e: Exception) {
+                Toast.makeText(this, getString(R.string.VideoAdapter_toast_no_player) + e.message, Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -492,7 +508,7 @@ fun MainScreen(
     onRecordClick: () -> Unit,
     onFloatingToggle: (Boolean) -> Unit,
     onSettingsClick: () -> Unit,
-    onVideoClick: (Uri) -> Unit,
+    onVideoClick: (VideoFile) -> Unit,
     onRenameVideo: (VideoFile, String) -> Unit,
     onDeleteVideo: (VideoFile) -> Unit
 ) {
@@ -577,7 +593,7 @@ fun MainScreen(
                     items(videos, key = { it.id }) { video ->
                         VideoItemComposable(
                             video = video,
-                            onClick = { onVideoClick(video.uri) },
+                            onClick = { onVideoClick(video) },
                             onRename = { newName -> onRenameVideo(video, newName) },
                             onDelete = { onDeleteVideo(video) }
                         )
@@ -773,6 +789,16 @@ fun VideoItemComposable(
                     shape = RoundedCornerShape(14.dp),
                     containerColor = Color.Black
                 ) {
+                    DropdownMenuItem(
+                        text = { Text("Play & Trim", color = Color.White, style = MaterialTheme.typography.bodyMedium) },
+                        leadingIcon = { Icon(Icons.Default.ContentCut, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                        onClick = {
+                            menuExpanded = false
+                            onClick()
+                        },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                    HorizontalDivider(color = Color(0xFF222222), thickness = 1.dp)
                     DropdownMenuItem(
                         text = { Text("Rename", color = Color.White, style = MaterialTheme.typography.bodyMedium) },
                         leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
