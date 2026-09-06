@@ -2,7 +2,7 @@
 This app is made because my device do not have any built-in screen recorder and most of the Play Store Apps collects data and show ads.
 
 
-# 📹 Open Screen Recorder — Features Overview
+# Open Screen Recorder — Features Overview
 
 ### 🎬 Screen Recording & Performance
 * **Flexible Video Quality & Resolutions:** Supports dynamic resolution scaling maintaining your device aspect ratio:
@@ -14,7 +14,7 @@ This app is made because my device do not have any built-in screen recorder and 
 
 ### 🎙️ Audio Recording Options
 * **Microphone Recording:** Capture voiceovers and ambient audio via microphone.
-* **System Audio Capture:** Record internal device sound (apps, games, media) using Android's `AudioPlaybackCapture` API.
+* **System Audio Capture:** Record internal device sound (apps, games, media).
 * **Dual Audio Mixing:** Record and mix both **Microphone** and **System Audio** simultaneously into a clean AAC audio stream.
 
 ---
