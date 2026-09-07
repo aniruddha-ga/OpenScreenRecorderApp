@@ -6,7 +6,9 @@ import android.content.Intent
 import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.PixelFormat
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.TypedValue
 import android.view.*
 import androidx.appcompat.app.AppCompatDelegate
@@ -154,6 +156,20 @@ class FloatingStartService : Service() {
     private fun setupButtons() {
         binding?.btnStart?.setOnClickListener {
             launchPermissionActivity()
+        }
+
+        binding?.btnScreenshot?.setOnClickListener {
+            binding?.root?.visibility = View.INVISIBLE
+            val intent = Intent(this, ScreenshotEditorActivity::class.java).apply {
+                putExtra(ScreenshotEditorActivity.EXTRA_MODE, ScreenshotEditorActivity.MODE_CAPTURE)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            Handler(Looper.getMainLooper()).postDelayed({
+                try {
+                    binding?.root?.visibility = View.VISIBLE
+                } catch (_: Exception) {}
+            }, 800)
         }
 
         binding?.btnClose?.setOnClickListener {
