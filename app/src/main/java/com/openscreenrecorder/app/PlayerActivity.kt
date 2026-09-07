@@ -2,6 +2,7 @@ package com.openscreenrecorder.app
 
 import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Bundle
@@ -17,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCut
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Save
@@ -209,6 +211,15 @@ fun PlayerScreen(
                 },
                 actions = {
                     if (!isTrimMode) {
+                        IconButton(onClick = {
+                            val editIntent = Intent(context, VideoEditorActivity::class.java).apply {
+                                putExtra(VideoEditorActivity.EXTRA_VIDEO_URI, videoUri.toString())
+                                putExtra(VideoEditorActivity.EXTRA_VIDEO_TITLE, videoTitle)
+                            }
+                            context.startActivity(editIntent)
+                        }) {
+                            Icon(imageVector = Icons.Default.Edit, contentDescription = "Edit Studio")
+                        }
                         IconButton(onClick = {
                             isTrimMode = true
                             if (durationMs > 0 && !isTrimInitialized) {

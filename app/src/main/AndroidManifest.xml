@@ -71,6 +71,11 @@
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
 
         <activity
+            android:name=".VideoEditorActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
+
+        <activity
             android:name=".MediaProjectionPermissionActivity"
             android:exported="false"
             android:excludeFromRecents="true"

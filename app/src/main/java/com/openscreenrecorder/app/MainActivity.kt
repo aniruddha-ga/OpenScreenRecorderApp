@@ -898,7 +898,7 @@ fun VideoItemComposable(
                     containerColor = Color.Black
                 ) {
                     DropdownMenuItem(
-                        text = { Text(if (video.isVideo) "Play & Trim" else "View Image", color = Color.White, style = MaterialTheme.typography.bodyMedium) },
+                        text = { Text(if (video.isVideo) "Play & Quick Trim" else "View Image", color = Color.White, style = MaterialTheme.typography.bodyMedium) },
                         leadingIcon = {
                             Icon(
                                 if (video.isVideo) Icons.Default.ContentCut else Icons.Default.Share,
@@ -912,6 +912,22 @@ fun VideoItemComposable(
                         },
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                     )
+                    if (video.isVideo) {
+                        HorizontalDivider(color = Color(0xFF222222), thickness = 1.dp)
+                        DropdownMenuItem(
+                            text = { Text("Edit Studio", color = Color.White, style = MaterialTheme.typography.bodyMedium) },
+                            leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                            onClick = {
+                                menuExpanded = false
+                                val editIntent = Intent(context, VideoEditorActivity::class.java).apply {
+                                    putExtra(VideoEditorActivity.EXTRA_VIDEO_URI, video.uri.toString())
+                                    putExtra(VideoEditorActivity.EXTRA_VIDEO_TITLE, video.name)
+                                }
+                                context.startActivity(editIntent)
+                            },
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
                     HorizontalDivider(color = Color(0xFF222222), thickness = 1.dp)
                     DropdownMenuItem(
                         text = { Text("Rename", color = Color.White, style = MaterialTheme.typography.bodyMedium) },
