@@ -34,6 +34,11 @@ class ConfigManager(private val context: Context) {
         private const val KEY_DATE_FORMAT_PATTERN = "date_format_pattern"
         private const val KEY_RECORDING_OVERLAY_ENABLED = "recording_overlay_enabled"
         private const val KEY_FLOATING_AUTO_LAUNCH_ENABLED = "floating_auto_launch_enabled"
+        private const val KEY_BRUSH_ENABLED = "brush_enabled"
+        private const val KEY_CAMERA_ENABLED = "camera_enabled"
+        private const val KEY_SCREENSHOT_ENABLED = "screenshot_enabled"
+        private const val KEY_BRUSH_COLOR = "brush_color"
+        private const val KEY_BRUSH_SIZE = "brush_size"
 
         const val DEFAULT_FILENAME_PREFIX = "Screen_Record_"
         const val DEFAULT_DATE_FORMAT_PATTERN = "yyyyMMdd_HHmmss"
@@ -97,12 +102,32 @@ class ConfigManager(private val context: Context) {
         set(value) = prefs.edit { putString(KEY_DATE_FORMAT_PATTERN, value) }
 
     var isRecordingOverlayEnabled: Boolean
-        get() = prefs.getBoolean(KEY_RECORDING_OVERLAY_ENABLED, false)
+        get() = prefs.getBoolean(KEY_RECORDING_OVERLAY_ENABLED, true)
         set(value) = prefs.edit { putBoolean(KEY_RECORDING_OVERLAY_ENABLED, value) }
 
     var isFloatingAutoLaunchEnabled: Boolean
         get() = prefs.getBoolean(KEY_FLOATING_AUTO_LAUNCH_ENABLED, false)
         set(value) = prefs.edit { putBoolean(KEY_FLOATING_AUTO_LAUNCH_ENABLED, value) }
+
+    var isBrushEnabled: Boolean
+        get() = prefs.getBoolean(KEY_BRUSH_ENABLED, true)
+        set(value) = prefs.edit { putBoolean(KEY_BRUSH_ENABLED, value) }
+
+    var isCameraEnabled: Boolean
+        get() = prefs.getBoolean(KEY_CAMERA_ENABLED, false)
+        set(value) = prefs.edit { putBoolean(KEY_CAMERA_ENABLED, value) }
+
+    var isScreenshotEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SCREENSHOT_ENABLED, true)
+        set(value) = prefs.edit { putBoolean(KEY_SCREENSHOT_ENABLED, value) }
+
+    var brushColor: Int
+        get() = prefs.getInt(KEY_BRUSH_COLOR, 0xFFFF0000.toInt()) // Default Red
+        set(value) = prefs.edit { putInt(KEY_BRUSH_COLOR, value) }
+
+    var brushSize: Float
+        get() = prefs.getFloat(KEY_BRUSH_SIZE, 12f)
+        set(value) = prefs.edit { putFloat(KEY_BRUSH_SIZE, value) }
 
     /*
      * Generates custom file name using configured prefix and date-time format pattern.

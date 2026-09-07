@@ -96,5 +96,24 @@
     <string name="settings_storage_title">Save Location</string>
     <string name="settings_storage_summary">Choose custom folder to save recordings</string>
     <string name="settings_storage_default">DCIM/Recordings (Default)</string>
+    <string name="drag_handle">Drag Handle</string>
+    <string name="btn_start_recording">Start Recording</string>
+    <string name="btn_close">Close</string>
+    <string name="btn_pause_recording">Pause Recording</string>
+    <string name="btn_stop_recording">Stop Recording</string>
+    <string name="btn_brush">Screen Brush</string>
+    <string name="btn_camera">Camera Facecam</string>
+    <string name="btn_screenshot">Take Screenshot</string>
+    <string name="btn_redo">Redo</string>
+    <string name="btn_arrow">Arrow</string>
+    <string name="btn_rectangle">Rectangle Box</string>
+    <string name="btn_circle">Circle Oval</string>
+    <string name="btn_text">Text Note</string>
+    <string name="btn_whiteboard">Whiteboard Mode</string>
+    <string name="btn_laser">Laser Pointer</string>
+    <string name="btn_color_palette">Color Palette</string>
+    <string name="btn_brush_size">Brush Thickness</string>
+    <string name="btn_touch_passthrough">Interact Mode</string>
+    <string name="btn_exit_drawing">Exit Drawing</string>
 
 </resources>

@@ -1,9 +1,11 @@
 package com.openscreenrecorder.app
 
+import android.Manifest
 import android.animation.ValueAnimator
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.PixelFormat
@@ -11,6 +13,7 @@ import android.os.*
 import android.util.TypedValue
 import android.view.*
 import android.view.animation.DecelerateInterpolator
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.view.ContextThemeWrapper
 import com.google.android.material.color.DynamicColors
@@ -205,8 +208,9 @@ class RecordingOverlayService : Service() {
                 binding?.controlsContainer?.visibility = View.GONE
                 binding?.controlsContainer?.alpha = 1f
                 binding?.root?.post {
-                    val cardWidth = binding?.rootCard?.width ?: 120
-                    val targetX = (screenWidth - cardWidth - 12).coerceAtLeast(0)
+                    binding?.root?.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
+                    val cardWidth = binding?.root?.measuredWidth ?: 120
+                    val targetX = (screenWidth - cardWidth) / 2
                     animateWindowPositionX(params.x, targetX)
                 }
             }
@@ -218,18 +222,20 @@ class RecordingOverlayService : Service() {
         isExpanded = true
         updateScreenBounds()
 
-        val targetX = (params.x - 220).coerceAtLeast(12)
-        animateWindowPositionX(params.x, targetX)
+        binding?.controlsContainer?.visibility = View.VISIBLE
+        binding?.root?.post {
+            binding?.root?.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
+            val cardWidth = binding?.root?.measuredWidth ?: 300
+            val targetX = (screenWidth - cardWidth) / 2
+            animateWindowPositionX(params.x, targetX)
+        }
 
-        binding!!.root.postDelayed({
-            binding?.controlsContainer?.alpha = 0f
-            binding?.controlsContainer?.visibility = View.VISIBLE
-            binding?.controlsContainer?.animate()
-                ?.alpha(1f)
-                ?.setDuration(200)
-                ?.setInterpolator(DecelerateInterpolator(2f))
-                ?.start()
-        }, 80)
+        binding?.controlsContainer?.alpha = 0f
+        binding?.controlsContainer?.animate()
+            ?.alpha(1f)
+            ?.setDuration(200)
+            ?.setInterpolator(DecelerateInterpolator(2f))
+            ?.start()
 
         startCollapseTimer()
     }
@@ -283,6 +289,48 @@ class RecordingOverlayService : Service() {
     }
 
     private fun setupButtons() {
+        val configManager = ConfigManager(this)
+        binding?.btnBrush?.visibility = if (configManager.isBrushEnabled) View.VISIBLE else View.GONE
+        binding?.btnCamera?.visibility = if (configManager.isCameraEnabled) View.VISIBLE else View.GONE
+        binding?.btnScreenshot?.visibility = if (configManager.isScreenshotEnabled) View.VISIBLE else View.GONE
+
+        binding?.btnBrush?.setOnClickListener {
+            resetCollapseTimer()
+            if (DrawingOverlayService.isRunning) {
+                startService(Intent(this, DrawingOverlayService::class.java).apply {
+                    action = DrawingOverlayService.ACTION_STOP_DRAWING
+                })
+            } else {
+                startService(Intent(this, DrawingOverlayService::class.java))
+            }
+        }
+
+        binding?.btnCamera?.setOnClickListener {
+            resetCollapseTimer()
+            if (CameraOverlayService.isRunning) {
+                startService(Intent(this, CameraOverlayService::class.java).apply {
+                    action = CameraOverlayService.ACTION_STOP_CAMERA
+                })
+            } else {
+                if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                    startService(Intent(this, CameraOverlayService::class.java))
+                } else {
+                    Toast.makeText(this, "Camera permission required for Facecam", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+        binding?.btnScreenshot?.setOnClickListener {
+            resetCollapseTimer()
+            binding?.root?.visibility = View.INVISIBLE
+            startService(Intent(this, ScreenRecordService::class.java).apply {
+                action = ScreenRecordService.ACTION_TAKE_SCREENSHOT
+            })
+            collapseHandler.postDelayed({
+                binding?.root?.visibility = View.VISIBLE
+            }, 350)
+        }
+
         binding?.btnPause?.setOnClickListener {
             resetCollapseTimer()
             handlePauseResume()
@@ -324,6 +372,8 @@ class RecordingOverlayService : Service() {
         collapseHandler.removeCallbacks(collapseRunnable)
         redDotAnimator?.cancel()
         windowXAnimator?.cancel()
+        try { stopService(Intent(this, DrawingOverlayService::class.java)) } catch (_: Exception) {}
+        try { stopService(Intent(this, CameraOverlayService::class.java)) } catch (_: Exception) {}
         binding?.root?.let {
             try {
                 windowManager?.removeView(it)

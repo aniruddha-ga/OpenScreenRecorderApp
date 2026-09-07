@@ -13,7 +13,11 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.front" android:required="false" />
 
     <!-- Android 14+ (API 34+) Selected Photos & Video Media Access -->
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"
@@ -54,6 +58,11 @@
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
 
         <activity
+            android:name=".ImageViewerActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
+
+        <activity
             android:name=".MediaProjectionPermissionActivity"
             android:exported="false"
             android:excludeFromRecents="true"
@@ -68,6 +77,14 @@
 
         <service
             android:name=".RecordingOverlayService"
+            android:exported="false" />
+
+        <service
+            android:name=".DrawingOverlayService"
+            android:exported="false" />
+
+        <service
+            android:name=".CameraOverlayService"
             android:exported="false" />
 
         <service

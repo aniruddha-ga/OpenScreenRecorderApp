@@ -1,10 +1,14 @@
 package com.openscreenrecorder.app
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
@@ -117,6 +121,9 @@ fun SettingsScreen(
     var showTouches by remember { mutableStateOf(configManager.showTouches) }
     var recordingOverlayEnabled by remember { mutableStateOf(configManager.isRecordingOverlayEnabled) }
     var floatingAutoLaunchEnabled by remember { mutableStateOf(configManager.isFloatingAutoLaunchEnabled) }
+    var isBrushEnabled by remember { mutableStateOf(configManager.isBrushEnabled) }
+    var isCameraEnabled by remember { mutableStateOf(configManager.isCameraEnabled) }
+    var isScreenshotEnabled by remember { mutableStateOf(configManager.isScreenshotEnabled) }
     var dynamicColors by remember { mutableStateOf(configManager.isDynamicColorsEnabled) }
     var videoQuality by remember { mutableStateOf(configManager.videoQuality) }
     var themeMode by remember { mutableStateOf(configManager.themeMode) }
@@ -475,31 +482,6 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Recording Controls Overlay", color = MaterialTheme.colorScheme.onSurface)
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "Show floating timer and pause/stop controls during recording",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = recordingOverlayEnabled,
-                            onCheckedChange = { checked ->
-                                recordingOverlayEnabled = checked
-                                configManager.isRecordingOverlayEnabled = checked
-                            }
-                        )
-                    }
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), thickness = 1.dp)
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
                             Text("Show Touches", color = MaterialTheme.colorScheme.onSurface)
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
@@ -523,6 +505,144 @@ fun SettingsScreen(
                                 configManager.showTouches = checked
                             }
                         )
+                    }
+                }
+            }
+
+            // Recording Overlay & On-Screen Tools Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Recording Overlay & On-Screen Tools", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+
+                    // Master Switch: Recording Controls Overlay
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Recording Controls Overlay", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Show floating timer and recording controls overlay during recording",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = recordingOverlayEnabled,
+                            onCheckedChange = { checked ->
+                                recordingOverlayEnabled = checked
+                                configManager.isRecordingOverlayEnabled = checked
+                            }
+                        )
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), thickness = 1.dp)
+
+                    // Sub-Tools (controlled by master switch)
+                    Column(
+                        modifier = Modifier.padding(start = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = "Overlay Tools & Shortcuts",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (recordingOverlayEnabled) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Screen Brush",
+                                    color = if (recordingOverlayEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Screen drawing and annotation toolbar button",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (recordingOverlayEnabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                )
+                            }
+                            Switch(
+                                checked = isBrushEnabled,
+                                enabled = recordingOverlayEnabled,
+                                onCheckedChange = { checked ->
+                                    isBrushEnabled = checked
+                                    configManager.isBrushEnabled = checked
+                                }
+                            )
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), thickness = 1.dp)
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Camera Facecam",
+                                    color = if (recordingOverlayEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Floating camera facecam preview button",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (recordingOverlayEnabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                )
+                            }
+                            Switch(
+                                checked = isCameraEnabled,
+                                enabled = recordingOverlayEnabled,
+                                onCheckedChange = { checked ->
+                                    if (checked && ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                                        ActivityCompat.requestPermissions(context as ComponentActivity, arrayOf(Manifest.permission.CAMERA), 1003)
+                                    }
+                                    isCameraEnabled = checked
+                                    configManager.isCameraEnabled = checked
+                                }
+                            )
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), thickness = 1.dp)
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Screenshot Shortcut",
+                                    color = if (recordingOverlayEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Instant screenshot capture button",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (recordingOverlayEnabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                )
+                            }
+                            Switch(
+                                checked = isScreenshotEnabled,
+                                enabled = recordingOverlayEnabled,
+                                onCheckedChange = { checked ->
+                                    isScreenshotEnabled = checked
+                                    configManager.isScreenshotEnabled = checked
+                                }
+                            )
+                        }
                     }
                 }
             }

@@ -9,9 +9,7 @@ import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -45,6 +43,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import kotlin.time.Duration.Companion.milliseconds
 
 class PlayerActivity : ComponentActivity() {
 
@@ -183,7 +182,7 @@ fun PlayerScreen(
                     exoPlayer.seekTo(startPoint)
                 }
             }
-            delay(100)
+            delay(100.milliseconds)
         }
     }
 
@@ -532,13 +531,11 @@ private suspend fun executeVideoTrim(
             fileDoc?.uri?.let { uri ->
                 outputUri = uri
                 val pfd = context.contentResolver.openFileDescriptor(uri, "rw")
-                if (pfd != null) {
-                    pfd.use { descriptor ->
-                        val trimResult = VideoTrimmer.trimVideo(context, sourceUri, descriptor, startMs, endMs, onProgress)
-                        savedSuccessfully = trimResult.first
-                        if (!savedSuccessfully) {
-                            return@withContext trimResult
-                        }
+                pfd?.use { descriptor ->
+                    val trimResult = VideoTrimmer.trimVideo(context, sourceUri, descriptor, startMs, endMs, onProgress)
+                    savedSuccessfully = trimResult.first
+                    if (!savedSuccessfully) {
+                        return@withContext trimResult
                     }
                 }
             }

@@ -18,11 +18,16 @@ import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.*
 import android.graphics.Bitmap
+import android.graphics.PixelFormat
+import android.media.ImageReader
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.DisplayMetrics
 import android.util.Log
 import android.util.Size
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import android.view.Surface
 import android.view.WindowManager
 import android.widget.Toast
@@ -48,6 +53,7 @@ class ScreenRecordService : Service() {
         const val ACTION_STOP = "com.openscreenrecorder.app.ACTION_STOP"
         const val ACTION_PAUSE = "com.openscreenrecorder.app.ACTION_PAUSE"
         const val ACTION_RESUME = "com.openscreenrecorder.app.ACTION_RESUME"
+        const val ACTION_TAKE_SCREENSHOT = "com.openscreenrecorder.app.ACTION_TAKE_SCREENSHOT"
         
         const val ACTION_STATE_CHANGED = "com.openscreenrecorder.app.ACTION_STATE_CHANGED"
         const val EXTRA_STATE = "extra_state"
@@ -154,6 +160,7 @@ class ScreenRecordService : Service() {
             }
             ACTION_PAUSE -> pauseRecording()
             ACTION_RESUME -> resumeRecording()
+            ACTION_TAKE_SCREENSHOT -> captureScreenshot()
             ACTION_STOP -> {
                 stopRecording()
                 stopForeground(STOP_FOREGROUND_REMOVE)
@@ -610,12 +617,91 @@ class ScreenRecordService : Service() {
             Log.e(TAG, "Failed to stop recording overlay service: ${e.message}")
         }
 
-        if (Settings.canDrawOverlays(this)) {
+        if (configManager.isFloatingAutoLaunchEnabled && Settings.canDrawOverlays(this)) {
             try {
                 startService(Intent(this, FloatingStartService::class.java))
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to restart floating start service: ${e.message}")
             }
+        }
+    }
+
+    @SuppressLint("WrongConstant")
+    private fun captureScreenshot() {
+        val projection = mediaProjection ?: return
+        val handlerThread = HandlerThread("ScreenshotThread").apply { start() }
+        val handler = Handler(handlerThread.looper)
+
+        val imageReader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 2)
+        var tempDisplay: VirtualDisplay? = null
+
+        imageReader.setOnImageAvailableListener({ reader ->
+            val image = reader.acquireLatestImage()
+            if (image != null) {
+                try {
+                    val planes = image.planes
+                    val buffer = planes[0].buffer
+                    val pixelStride = planes[0].pixelStride
+                    val rowStride = planes[0].rowStride
+                    val rowPadding = rowStride - pixelStride * screenWidth
+
+                    val bitmap = Bitmap.createBitmap(
+                        screenWidth + rowPadding / pixelStride,
+                        screenHeight,
+                        Bitmap.Config.ARGB_8888
+                    )
+                    bitmap.copyPixelsFromBuffer(buffer)
+                    image.close()
+
+                    val croppedBitmap = if (rowPadding > 0) {
+                        Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight)
+                    } else {
+                        bitmap
+                    }
+
+                    saveScreenshotToGallery(croppedBitmap)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error capturing screenshot: ${e.message}")
+                } finally {
+                    try { imageReader.close() } catch (_: Exception) {}
+                    try { tempDisplay?.release() } catch (_: Exception) {}
+                    handlerThread.quitSafely()
+                }
+            }
+        }, handler)
+
+        tempDisplay = projection.createVirtualDisplay(
+            "ScreenshotDisplay",
+            screenWidth, screenHeight, scaledDensity,
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+            imageReader.surface, null, handler
+        )
+    }
+
+    private fun saveScreenshotToGallery(bitmap: Bitmap) {
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val fileName = "Screen_Shot_$timestamp.png"
+
+        val contentValues = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+            put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, "DCIM/Recordings")
+        }
+
+        try {
+            val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+            uri?.let { targetUri ->
+                contentResolver.openOutputStream(targetUri)?.use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                }
+                MediaScannerConnection.scanFile(this, arrayOf(targetUri.path), arrayOf("image/png"), null)
+                contentResolver.notifyChange(targetUri, null)
+                mainHandler.post {
+                    Toast.makeText(applicationContext, "Screenshot saved to gallery", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save screenshot: ${e.message}")
         }
     }
 
@@ -628,9 +714,10 @@ class ScreenRecordService : Service() {
         } else null
 
         videoUri?.let { uri ->
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "video/mp4")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            val intent = Intent(this, PlayerActivity::class.java).apply {
+                putExtra(PlayerActivity.EXTRA_VIDEO_URI, uri.toString())
+                putExtra(PlayerActivity.EXTRA_VIDEO_TITLE, "Screen Recording")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
             val pendingIntent = PendingIntent.getActivity(
                 this,

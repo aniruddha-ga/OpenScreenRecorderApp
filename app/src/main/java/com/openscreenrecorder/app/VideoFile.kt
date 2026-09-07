@@ -8,5 +8,6 @@ data class VideoFile(
     val name: String,
     val duration: Long,
     val size: Long,
-    val dateAdded: Long
+    val dateAdded: Long,
+    val isVideo: Boolean = true
 )

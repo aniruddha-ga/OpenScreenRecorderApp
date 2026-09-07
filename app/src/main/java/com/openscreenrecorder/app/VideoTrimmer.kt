@@ -94,7 +94,6 @@ object VideoTrimmer {
 
             // Determine actual start timestamp after seek
             val firstPtsUs = extractor.sampleTime.coerceAtLeast(0L)
-            val ptsOffset = firstPtsUs
             val totalDurationUs = (endUs - startUs).coerceAtLeast(1L)
 
             while (true) {
@@ -120,7 +119,7 @@ object VideoTrimmer {
                             muxerFlags = muxerFlags or MediaCodec.BUFFER_FLAG_KEY_FRAME
                         }
 
-                        val adjustedPtsUs = (sampleTimeUs - ptsOffset).coerceAtLeast(0L)
+                        val adjustedPtsUs = (sampleTimeUs - firstPtsUs).coerceAtLeast(0L)
 
                         bufferInfo.set(0, sampleSize, adjustedPtsUs, muxerFlags)
                         muxer.writeSampleData(muxerTrackIndex, buffer, bufferInfo)

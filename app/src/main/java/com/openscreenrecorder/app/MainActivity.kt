@@ -150,21 +150,41 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openVideo(video: VideoFile) {
-        val intent = Intent(this, PlayerActivity::class.java).apply {
-            putExtra(PlayerActivity.EXTRA_VIDEO_URI, video.uri.toString())
-            putExtra(PlayerActivity.EXTRA_VIDEO_TITLE, video.name)
-        }
-        try {
-            playerLauncher.launch(intent)
-        } catch (_: Exception) {
-            val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(video.uri, "video/mp4")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        if (video.isVideo) {
+            val intent = Intent(this, PlayerActivity::class.java).apply {
+                putExtra(PlayerActivity.EXTRA_VIDEO_URI, video.uri.toString())
+                putExtra(PlayerActivity.EXTRA_VIDEO_TITLE, video.name)
             }
             try {
-                startActivity(fallbackIntent)
-            } catch (e: Exception) {
-                Toast.makeText(this, getString(R.string.VideoAdapter_toast_no_player) + e.message, Toast.LENGTH_SHORT).show()
+                playerLauncher.launch(intent)
+            } catch (_: Exception) {
+                val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(video.uri, "video/mp4")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                try {
+                    startActivity(fallbackIntent)
+                } catch (e: Exception) {
+                    Toast.makeText(this, getString(R.string.VideoAdapter_toast_no_player) + e.message, Toast.LENGTH_SHORT).show()
+                }
+            }
+        } else {
+            val intent = Intent(this, ImageViewerActivity::class.java).apply {
+                putExtra(ImageViewerActivity.EXTRA_IMAGE_URI, video.uri.toString())
+                putExtra(ImageViewerActivity.EXTRA_IMAGE_TITLE, video.name)
+            }
+            try {
+                playerLauncher.launch(intent)
+            } catch (_: Exception) {
+                val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(video.uri, "image/*")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                try {
+                    startActivity(fallbackIntent)
+                } catch (e: Exception) {
+                    Toast.makeText(this, "No image viewer found: " + e.message, Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
@@ -363,23 +383,29 @@ class MainActivity : AppCompatActivity() {
                     val treeUri = customUriStr.toUri()
                     val parentDoc = DocumentFile.fromTreeUri(this@MainActivity, treeUri)
                     parentDoc?.listFiles()?.forEach { fileDoc ->
-                        if (fileDoc.isFile && (fileDoc.name?.endsWith(".mp4", ignoreCase = true) == true)) {
-                            val name = fileDoc.name ?: "Recording.mp4"
+                        val isVid = fileDoc.name?.endsWith(".mp4", ignoreCase = true) == true
+                        val isImg = fileDoc.name?.endsWith(".png", ignoreCase = true) == true ||
+                                fileDoc.name?.endsWith(".jpg", ignoreCase = true) == true
+
+                        if (fileDoc.isFile && (isVid || isImg)) {
+                            val name = fileDoc.name ?: "Media"
                             val uri = fileDoc.uri
                             val size = fileDoc.length()
                             val dateAdded = fileDoc.lastModified() / 1000L
                             var duration = 0L
 
-                            try {
-                                val mmr = MediaMetadataRetriever()
-                                mmr.setDataSource(this@MainActivity, uri)
-                                val durStr = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-                                duration = durStr?.toLongOrNull() ?: 0L
-                                mmr.release()
-                            } catch (_: Exception) {}
+                            if (isVid) {
+                                try {
+                                    val mmr = MediaMetadataRetriever()
+                                    mmr.setDataSource(this@MainActivity, uri)
+                                    val durStr = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                                    duration = durStr?.toLongOrNull() ?: 0L
+                                    mmr.release()
+                                } catch (_: Exception) {}
+                            }
 
                             if (size > 0L) {
-                                videos.add(VideoFile(uri.hashCode().toLong(), uri, name, duration, size, dateAdded))
+                                videos.add(VideoFile(uri.hashCode().toLong(), uri, name, duration, size, dateAdded, isVideo = isVid))
                             }
                         }
                     }
@@ -435,13 +461,47 @@ class MainActivity : AppCompatActivity() {
                             }
 
                             if (videos.none { it.name == name || it.uri == uri }) {
-                                videos.add(VideoFile(id, uri, name, duration, size, dateAdded))
+                                videos.add(VideoFile(id, uri, name, duration, size, dateAdded, isVideo = true))
                             }
                         }
                     }
                 }
             } catch (e: Exception) {
-                Log.e("MainActivity", "MediaStore query failed: ${e.message}")
+                Log.e("MainActivity", "MediaStore video query failed: ${e.message}")
+            }
+
+            val imgProjection = arrayOf(
+                MediaStore.Images.Media._ID,
+                MediaStore.Images.Media.DISPLAY_NAME,
+                MediaStore.Images.Media.SIZE,
+                MediaStore.Images.Media.DATE_ADDED,
+                MediaStore.Images.Media.RELATIVE_PATH
+            )
+
+            try {
+                contentResolver.query(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    imgProjection,
+                    selection,
+                    selectionArgs,
+                    "${MediaStore.Images.Media.DATE_ADDED} DESC"
+                )?.use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID))
+                        val name = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)) ?: ""
+                        val size = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE))
+                        val dateAdded = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED))
+
+                        if (size > 0L) {
+                            val uri = Uri.withAppendedPath(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString())
+                            if (videos.none { it.name == name || it.uri == uri }) {
+                                videos.add(VideoFile(id, uri, name, 0L, size, dateAdded, isVideo = false))
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "MediaStore image query failed: ${e.message}")
             }
 
             videos.sortByDescending { it.dateAdded }
@@ -456,6 +516,9 @@ class MainActivity : AppCompatActivity() {
     private fun registerSystemObservers() {
         contentResolver.registerContentObserver(
             MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, videoObserver
+        )
+        contentResolver.registerContentObserver(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true, videoObserver
         )
         val filter = IntentFilter().apply {
             addAction(ScreenRecordService.ACTION_STATE_CHANGED)
@@ -499,6 +562,8 @@ class MainActivity : AppCompatActivity() {
     }
 }
 
+enum class MediaFilter { ALL, VIDEOS, SCREENSHOTS }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
@@ -512,6 +577,16 @@ fun MainScreen(
     onRenameVideo: (VideoFile, String) -> Unit,
     onDeleteVideo: (VideoFile) -> Unit
 ) {
+    var selectedFilter by remember { mutableStateOf(MediaFilter.ALL) }
+
+    val filteredVideos = remember(videos, selectedFilter) {
+        when (selectedFilter) {
+            MediaFilter.ALL -> videos
+            MediaFilter.VIDEOS -> videos.filter { it.isVideo }
+            MediaFilter.SCREENSHOTS -> videos.filter { !it.isVideo }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -539,64 +614,91 @@ fun MainScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            if (videos.isEmpty()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Box(
+            Column(modifier = Modifier.fillMaxSize()) {
+                if (videos.isNotEmpty()) {
+                    Row(
                         modifier = Modifier
-                            .size(88.dp)
-                            .background(
-                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                                shape = CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_screen_record),
-                            contentDescription = null,
-                            modifier = Modifier.size(44.dp),
-                            tint = MaterialTheme.colorScheme.primary
+                        FilterChip(
+                            selected = selectedFilter == MediaFilter.ALL,
+                            onClick = { selectedFilter = MediaFilter.ALL },
+                            label = { Text("All (${videos.size})") }
+                        )
+                        FilterChip(
+                            selected = selectedFilter == MediaFilter.VIDEOS,
+                            onClick = { selectedFilter = MediaFilter.VIDEOS },
+                            label = { Text("Videos (${videos.count { it.isVideo }})") }
+                        )
+                        FilterChip(
+                            selected = selectedFilter == MediaFilter.SCREENSHOTS,
+                            onClick = { selectedFilter = MediaFilter.SCREENSHOTS },
+                            label = { Text("Screenshots (${videos.count { !it.isVideo }})") }
                         )
                     }
-                    Spacer(modifier = Modifier.height(20.dp))
-                    Text(
-                        text = "No Recordings Yet",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Tap the record button below to start capturing your screen",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center
-                    )
                 }
-            } else {
-                LazyVerticalStaggeredGrid(
-                    columns = StaggeredGridCells.Fixed(2),
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(
-                        start = 16.dp,
-                        top = 16.dp,
-                        end = 16.dp,
-                        bottom = 108.dp
-                    ),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalItemSpacing = 16.dp
-                ) {
-                    items(videos, key = { it.id }) { video ->
-                        VideoItemComposable(
-                            video = video,
-                            onClick = { onVideoClick(video) },
-                            onRename = { newName -> onRenameVideo(video, newName) },
-                            onDelete = { onDeleteVideo(video) }
+
+                if (filteredVideos.isEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(88.dp)
+                                .background(
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_screen_record),
+                                contentDescription = null,
+                                modifier = Modifier.size(44.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Text(
+                            text = if (videos.isEmpty()) "No Recordings Yet" else "No Items Found",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = if (videos.isEmpty()) "Tap the record button below to start capturing your screen" else "No items match the selected filter",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                } else {
+                    LazyVerticalStaggeredGrid(
+                        columns = StaggeredGridCells.Fixed(2),
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            top = 8.dp,
+                            end = 16.dp,
+                            bottom = 108.dp
+                        ),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalItemSpacing = 16.dp
+                    ) {
+                        items(filteredVideos, key = { it.id }) { video ->
+                            VideoItemComposable(
+                                video = video,
+                                onClick = { onVideoClick(video) },
+                                onRename = { newName -> onRenameVideo(video, newName) },
+                                onDelete = { onDeleteVideo(video) }
+                            )
+                        }
                     }
                 }
             }
@@ -715,26 +817,28 @@ fun VideoItemComposable(
             if (thumbnailBitmap != null) {
                 Image(
                     bitmap = thumbnailBitmap!!.asImageBitmap(),
-                    contentDescription = "Video Thumbnail",
+                    contentDescription = "Media Thumbnail",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(36.dp)
-                        .background(
-                            color = Color.Black.copy(alpha = 0.45f),
-                            shape = CircleShape
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_play),
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                        tint = Color.White
-                    )
+                if (video.isVideo) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(36.dp)
+                            .background(
+                                color = Color.Black.copy(alpha = 0.45f),
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_play),
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = Color.White
+                        )
+                    }
                 }
             } else {
                 Box(
@@ -744,7 +848,7 @@ fun VideoItemComposable(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        painter = painterResource(id = R.drawable.ic_screen_record),
+                        painter = painterResource(id = if (video.isVideo) R.drawable.ic_screen_record else R.drawable.ic_camera),
                         contentDescription = null,
                         modifier = Modifier.size(32.dp),
                         tint = MaterialTheme.colorScheme.primary
@@ -790,8 +894,14 @@ fun VideoItemComposable(
                     containerColor = Color.Black
                 ) {
                     DropdownMenuItem(
-                        text = { Text("Play & Trim", color = Color.White, style = MaterialTheme.typography.bodyMedium) },
-                        leadingIcon = { Icon(Icons.Default.ContentCut, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                        text = { Text(if (video.isVideo) "Play & Trim" else "View Image", color = Color.White, style = MaterialTheme.typography.bodyMedium) },
+                        leadingIcon = {
+                            Icon(
+                                if (video.isVideo) Icons.Default.ContentCut else Icons.Default.Share,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
                         onClick = {
                             menuExpanded = false
                             onClick()
@@ -815,11 +925,11 @@ fun VideoItemComposable(
                         onClick = {
                             menuExpanded = false
                             val intent = Intent(Intent.ACTION_SEND).apply {
-                                type = "video/mp4"
+                                type = if (video.isVideo) "video/mp4" else "image/png"
                                 putExtra(Intent.EXTRA_STREAM, video.uri)
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
-                            context.startActivity(Intent.createChooser(intent, "Share Video"))
+                            context.startActivity(Intent.createChooser(intent, "Share Media"))
                         },
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                     )
@@ -866,7 +976,7 @@ fun VideoItemComposable(
                         modifier = Modifier.weight(1f)
                     ) {
                         Text(
-                            text = video.name.removeSuffix(".mp4"),
+                            text = if (video.isVideo) video.name.removeSuffix(".mp4") else video.name.removeSuffix(".png").removeSuffix(".jpg"),
                             style = MaterialTheme.typography.titleSmall,
                             color = Color.White,
                             maxLines = 1,
@@ -893,7 +1003,7 @@ fun VideoItemComposable(
                             .padding(horizontal = 4.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = duration,
+                            text = if (video.isVideo) duration else "Screenshot",
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White
                         )

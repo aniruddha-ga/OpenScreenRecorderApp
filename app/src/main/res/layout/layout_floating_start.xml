@@ -2,15 +2,19 @@
 <com.google.android.material.card.MaterialCardView
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/rootCard"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
+    android:layout_gravity="center"
+    android:fitsSystemWindows="true"
     app:cardCornerRadius="100dp"
     app:cardElevation="0dp"
     app:cardBackgroundColor="?attr/colorSurface"
     android:alpha="0.95"
     app:strokeWidth="1dp"
-    app:strokeColor="?attr/colorOutlineVariant">
+    app:strokeColor="?attr/colorOutlineVariant"
+    tools:theme="@style/Theme.OpenScreenRecorder">
 
     <LinearLayout
         android:id="@+id/mainContainer"
@@ -31,7 +35,7 @@
             android:layout_marginEnd="8dp"
             android:src="@drawable/ic_drag_handle"
             app:tint="?attr/colorOnSurfaceVariant"
-            android:contentDescription="Drag Handle" />
+            android:contentDescription="@string/drag_handle" />
 
         <com.google.android.material.divider.MaterialDivider
             android:layout_width="1dp"
@@ -41,9 +45,10 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnStart"
-            style="@style/Widget.Material3Expressive.Button.IconButton.Standard"
+            style="@style/Widget.Material3.Button.IconButton"
             android:layout_width="48dp"
             android:layout_height="48dp"
+            android:contentDescription="@string/btn_start_recording"
             app:cornerRadius="100dp"
             app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Full"
             app:iconSize="38dp"
@@ -66,9 +71,10 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnClose"
-            style="@style/Widget.Material3Expressive.Button.IconButton.Standard"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
+            style="@style/Widget.Material3.Button.IconButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="@string/btn_close"
             app:cornerRadius="100dp"
             app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Full"
             app:iconSize="22dp"
