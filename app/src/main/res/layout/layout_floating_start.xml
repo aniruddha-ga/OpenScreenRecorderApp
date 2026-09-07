@@ -53,7 +53,6 @@
             app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Full"
             app:iconSize="38dp"
             app:icon="@drawable/ic_floating_start"
-            app:iconTint="@null"
             app:iconGravity="textStart"
             app:iconPadding="0dp"
             android:padding="0dp"

@@ -122,6 +122,7 @@ class FloatingStartService : Service() {
             tv.data
         }
         binding?.dragHandle?.imageTintList = ColorStateList.valueOf(onSurfaceVariantColor)
+        binding?.btnStart?.iconTint = null
 
         setupLayoutParams()
         setupButtons()

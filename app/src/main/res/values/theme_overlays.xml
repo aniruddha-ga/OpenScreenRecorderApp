@@ -1,6 +1,6 @@
 <resources>
 
-    <style name="ThemeOverlay.AppTheme.MediumContrast" parent="Theme.Material3Expressive.DynamicColors.DayNight.NoActionBar">
+    <style name="ThemeOverlay.AppTheme.MediumContrast" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/colorPrimaryMediumContrast</item>
         <item name="colorOnPrimary">@color/colorOnPrimaryMediumContrast</item>
         <item name="colorPrimaryContainer">@color/colorPrimaryContainerMediumContrast</item>
@@ -56,7 +56,7 @@
         </item>
     </style>
 
-    <style name="ThemeOverlay.AppTheme.HighContrast" parent="Theme.Material3Expressive.DynamicColors.DayNight.NoActionBar">
+    <style name="ThemeOverlay.AppTheme.HighContrast" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/colorPrimaryHighContrast</item>
         <item name="colorOnPrimary">@color/colorOnPrimaryHighContrast</item>
         <item name="colorPrimaryContainer">@color/colorPrimaryContainerHighContrast</item>

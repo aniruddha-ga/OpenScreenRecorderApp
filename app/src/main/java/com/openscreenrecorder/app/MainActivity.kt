@@ -78,6 +78,7 @@ class MainActivity : AppCompatActivity() {
     private var videosState = mutableStateOf<List<VideoFile>>(emptyList())
     private var isRecordingState = mutableStateOf(ScreenRecordService.isRecording)
     private var isFloatingActiveState = mutableStateOf(FloatingStartService.isRunning)
+    private var hasAutoStartedSession = false
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val systemStateReceiver = object : BroadcastReceiver() {
@@ -295,7 +296,10 @@ class MainActivity : AppCompatActivity() {
     private fun performFullPermissionCheck() {
         checkAndRequestRuntimePermissions()
         if (!ScreenRecordService.isRecording) {
-            if (configManager.isFloatingAutoLaunchEnabled && Settings.canDrawOverlays(this)) {
+            if (configManager.isAutoStartRecordingEnabled && !hasAutoStartedSession) {
+                hasAutoStartedSession = true
+                handleRecordAction()
+            } else if (configManager.isFloatingAutoLaunchEnabled && Settings.canDrawOverlays(this)) {
                 try {
                     startService(Intent(this, FloatingStartService::class.java))
                     isFloatingActiveState.value = true

@@ -85,6 +85,7 @@ class ScreenRecordService : Service() {
     private lateinit var configManager: ConfigManager
 
     @Volatile private var isCapturingScreenshot = false
+    private var autoStopRunnable: Runnable? = null
 
     private var screenWidth = 0
     private var screenHeight = 0
@@ -193,7 +194,23 @@ class ScreenRecordService : Service() {
         totalPausedDurationUs = 0
         lastVideoWrittenPtsUs = 0
         lastAudioWrittenPtsUs = 0
-        
+
+        val autoStopSecs = configManager.autoStopTimerSeconds
+        if (autoStopSecs > 0) {
+            autoStopRunnable?.let { mainHandler.removeCallbacks(it) }
+            val runnable = Runnable {
+                if (isRecording) {
+                    Log.d(TAG, "Auto-stop timer reached ($autoStopSecs seconds). Stopping recording.")
+                    showToastOnMain("Recording auto-stopped by timer")
+                    stopRecording()
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                }
+            }
+            autoStopRunnable = runnable
+            mainHandler.postDelayed(runnable, autoStopSecs * 1000L)
+        }
+
         startRecording(resultCode, data)
     }
 
@@ -576,6 +593,11 @@ class ScreenRecordService : Service() {
         stopRequested = true
         isPaused = false
 
+        autoStopRunnable?.let {
+            mainHandler.removeCallbacks(it)
+            autoStopRunnable = null
+        }
+
         restoreShowTouchesSettingSafe()
 
         try { micRecord?.stop() } catch (_: Exception) {}
@@ -719,7 +741,9 @@ class ScreenRecordService : Service() {
                             bitmap.copyPixelsFromBuffer(buffer)
 
                             val croppedBitmap = if (widthInPixels > screenWidth) {
-                                Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight)
+                                val cropped = Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight)
+                                bitmap.recycle()
+                                cropped
                             } else {
                                 bitmap
                             }
@@ -768,6 +792,12 @@ class ScreenRecordService : Service() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save screenshot: ${e.message}")
+        } finally {
+            try {
+                if (!bitmap.isRecycled) {
+                    bitmap.recycle()
+                }
+            } catch (_: Exception) {}
         }
     }
 

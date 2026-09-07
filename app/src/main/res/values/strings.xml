@@ -104,6 +104,8 @@
     <string name="btn_brush">Screen Brush</string>
     <string name="btn_camera">Camera Facecam</string>
     <string name="btn_screenshot">Take Screenshot</string>
+    <string name="btn_lock">Lock Controls</string>
+    <string name="btn_unlock">Unlock Controls</string>
     <string name="btn_redo">Redo</string>
     <string name="btn_arrow">Arrow</string>
     <string name="btn_rectangle">Rectangle Box</string>

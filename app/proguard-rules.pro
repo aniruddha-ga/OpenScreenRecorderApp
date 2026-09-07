@@ -31,6 +31,19 @@
 # Keep ViewBinding generated classes
 -keep class com.openscreenrecorder.app.databinding.** { *; }
 
+# Keep Custom and Framework Views instantiated by LayoutInflater
+-keep public class * extends android.view.View {
+    public <init>(android.content.Context);
+    public <init>(android.content.Context, android.util.AttributeSet);
+    public <init>(android.content.Context, android.util.AttributeSet, int);
+    public <init>(android.content.Context, android.util.AttributeSet, int, int);
+}
+
+-keepclassmembers class * extends android.view.View {
+    *** set*(...);
+    *** get*(...);
+}
+
 # ============================================================================
 # Jetpack Compose Optimizations
 # ============================================================================

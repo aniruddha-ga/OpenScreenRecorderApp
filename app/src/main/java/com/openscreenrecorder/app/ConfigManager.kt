@@ -38,6 +38,10 @@ class ConfigManager(private val context: Context) {
         private const val KEY_CAMERA_ENABLED = "camera_enabled"
         private const val KEY_SCREENSHOT_ENABLED = "screenshot_enabled"
         private const val KEY_SCREENSHOT_WITH_DRAWING = "screenshot_with_drawing"
+        private const val KEY_AUTO_STOP_TIMER = "auto_stop_timer"
+        private const val KEY_AUTO_START_RECORDING = "auto_start_recording"
+        private const val KEY_SCHEDULED_RECORDING_TIME = "scheduled_recording_time"
+        private const val KEY_SCHEDULED_RECORDING_ENABLED = "scheduled_recording_enabled"
         private const val KEY_BRUSH_COLOR = "brush_color"
         private const val KEY_BRUSH_SIZE = "brush_size"
 
@@ -125,6 +129,22 @@ class ConfigManager(private val context: Context) {
     var isScreenshotWithDrawing: Boolean
         get() = prefs.getBoolean(KEY_SCREENSHOT_WITH_DRAWING, true)
         set(value) = prefs.edit { putBoolean(KEY_SCREENSHOT_WITH_DRAWING, value) }
+
+    var autoStopTimerSeconds: Int
+        get() = prefs.getInt(KEY_AUTO_STOP_TIMER, 0)
+        set(value) = prefs.edit { putInt(KEY_AUTO_STOP_TIMER, value) }
+
+    var isAutoStartRecordingEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_START_RECORDING, false)
+        set(value) = prefs.edit { putBoolean(KEY_AUTO_START_RECORDING, value) }
+
+    var scheduledRecordingTimeMs: Long
+        get() = prefs.getLong(KEY_SCHEDULED_RECORDING_TIME, 0L)
+        set(value) = prefs.edit { putLong(KEY_SCHEDULED_RECORDING_TIME, value) }
+
+    var isScheduledRecordingEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SCHEDULED_RECORDING_ENABLED, false)
+        set(value) = prefs.edit { putBoolean(KEY_SCHEDULED_RECORDING_ENABLED, value) }
 
     var brushColor: Int
         get() = prefs.getInt(KEY_BRUSH_COLOR, 0xFFFF0000.toInt()) // Default Red

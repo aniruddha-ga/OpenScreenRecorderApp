@@ -35,6 +35,10 @@ class MediaProjectionPermissionActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         overridePendingTransition(0, 0)
+        
+        setShowWhenLocked(true)
+        setTurnScreenOn(true)
+
         configManager = ConfigManager(this)
         handleIntentExtras(intent)
         validateAndProceed()
@@ -168,7 +172,7 @@ class MediaProjectionPermissionActivity : Activity() {
             if (resultCode == RESULT_OK && data != null) {
                 startRecordingService(resultCode, data)
             } else {
-                if (Settings.canDrawOverlays(this)) {
+                if (configManager.isFloatingAutoLaunchEnabled && Settings.canDrawOverlays(this)) {
                     try {
                         startService(Intent(this, FloatingStartService::class.java))
                     } catch (e: Exception) {

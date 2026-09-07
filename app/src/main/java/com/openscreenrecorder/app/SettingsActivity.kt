@@ -1,11 +1,22 @@
 package com.openscreenrecorder.app
 
 import android.Manifest
+import android.app.AlarmManager
+import android.app.DatePickerDialog
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.TimePickerDialog
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import android.widget.Toast
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 import androidx.activity.ComponentActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -125,6 +136,11 @@ fun SettingsScreen(
     var isCameraEnabled by remember { mutableStateOf(configManager.isCameraEnabled) }
     var isScreenshotEnabled by remember { mutableStateOf(configManager.isScreenshotEnabled) }
     var isScreenshotWithDrawing by remember { mutableStateOf(configManager.isScreenshotWithDrawing) }
+    var autoStopTimerSecs by remember { mutableStateOf(configManager.autoStopTimerSeconds) }
+    var isAutoStartRecordingEnabled by remember { mutableStateOf(configManager.isAutoStartRecordingEnabled) }
+    var scheduledTimeMs by remember { mutableStateOf(configManager.scheduledRecordingTimeMs) }
+    var isScheduledRecordingEnabled by remember { mutableStateOf(configManager.isScheduledRecordingEnabled) }
+    var autoStopDropdownExpanded by remember { mutableStateOf(false) }
     var dynamicColors by remember { mutableStateOf(configManager.isDynamicColorsEnabled) }
     var videoQuality by remember { mutableStateOf(configManager.videoQuality) }
     var themeMode by remember { mutableStateOf(configManager.themeMode) }
@@ -678,6 +694,217 @@ fun SettingsScreen(
                 }
             }
 
+            // Automation & Timer Settings Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Automation & Timer Settings", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+
+                    // 1. Auto-Stop Timer
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Auto-Stop Timer", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Automatically stop recording after selected duration",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Box {
+                            val timerOptions = mapOf(
+                                0 to "Disabled",
+                                60 to "1 Min",
+                                300 to "5 Mins",
+                                600 to "10 Mins",
+                                1800 to "30 Mins",
+                                3600 to "1 Hour"
+                            )
+                            TextButton(onClick = { autoStopDropdownExpanded = true }) {
+                                Text(timerOptions[autoStopTimerSecs] ?: "${autoStopTimerSecs / 60} Mins")
+                            }
+                            DropdownMenu(
+                                expanded = autoStopDropdownExpanded,
+                                onDismissRequest = { autoStopDropdownExpanded = false }
+                            ) {
+                                timerOptions.forEach { (secs, label) ->
+                                    DropdownMenuItem(
+                                        text = { Text(label) },
+                                        onClick = {
+                                            autoStopTimerSecs = secs
+                                            configManager.autoStopTimerSeconds = secs
+                                            autoStopDropdownExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), thickness = 1.dp)
+
+                    // 2. Auto-Start Recording
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Auto-Start Recording", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Launch recording request automatically on app launch",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = isAutoStartRecordingEnabled,
+                            onCheckedChange = { checked ->
+                                isAutoStartRecordingEnabled = checked
+                                configManager.isAutoStartRecordingEnabled = checked
+                            }
+                        )
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), thickness = 1.dp)
+
+                    // 3. Scheduled Recording
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Scheduled Recording", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+                        val scheduleFormatter = remember { SimpleDateFormat("EEE, dd MMM yyyy 'at' hh:mm a", Locale.getDefault()) }
+                        val formattedSchedule = if (isScheduledRecordingEnabled && scheduledTimeMs > System.currentTimeMillis()) {
+                            "Scheduled for ${scheduleFormatter.format(Date(scheduledTimeMs))}"
+                        } else {
+                            "No recording scheduled"
+                        }
+                        Text(
+                            text = formattedSchedule,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(top = 4.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    if (!checkAndRequestPermissionsForScheduling(context)) {
+                                        return@Button
+                                    }
+                                    val cal = Calendar.getInstance()
+                                    DatePickerDialog(
+                                        context,
+                                        { _, year, month, dayOfMonth ->
+                                            cal.set(Calendar.YEAR, year)
+                                            cal.set(Calendar.MONTH, month)
+                                            cal.set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                                            TimePickerDialog(
+                                                context,
+                                                { _, hourOfDay, minute ->
+                                                    cal.set(Calendar.HOUR_OF_DAY, hourOfDay)
+                                                    cal.set(Calendar.MINUTE, minute)
+                                                    cal.set(Calendar.SECOND, 0)
+                                                    val targetMs = cal.timeInMillis
+                                                    if (targetMs > System.currentTimeMillis()) {
+                                                        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                                                        val intent = Intent(context, RecordingSchedulerReceiver::class.java).apply {
+                                                            action = RecordingSchedulerReceiver.ACTION_SCHEDULED_RECORDING
+                                                        }
+                                                        val pendingIntent = PendingIntent.getBroadcast(
+                                                            context,
+                                                            0,
+                                                            intent,
+                                                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                                                        )
+                                                        val showIntent = PendingIntent.getActivity(
+                                                            context,
+                                                            0,
+                                                            Intent(context, SettingsActivity::class.java),
+                                                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                                                        )
+                                                        try {
+                                                            if (!alarmManager.canScheduleExactAlarms()) {
+                                                                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, targetMs, pendingIntent)
+                                                            } else {
+                                                                alarmManager.setAlarmClock(
+                                                                    AlarmManager.AlarmClockInfo(targetMs, showIntent),
+                                                                    pendingIntent
+                                                                )
+                                                            }
+                                                        } catch (_: SecurityException) {
+                                                            try {
+                                                                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, targetMs, pendingIntent)
+                                                            } catch (e2: Exception) {
+                                                                Log.e("SettingsActivity", "Failed to schedule fallback alarm: ${e2.message}")
+                                                            }
+                                                        } catch (e: Exception) {
+                                                            Log.e("SettingsActivity", "Failed to schedule alarm clock: ${e.message}")
+                                                            try {
+                                                                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, targetMs, pendingIntent)
+                                                            } catch (e2: Exception) {
+                                                                Log.e("SettingsActivity", "Failed to schedule fallback alarm: ${e2.message}")
+                                                            }
+                                                        }
+                                                        scheduledTimeMs = targetMs
+                                                        isScheduledRecordingEnabled = true
+                                                        configManager.scheduledRecordingTimeMs = targetMs
+                                                        configManager.isScheduledRecordingEnabled = true
+                                                        Toast.makeText(context, "Recording scheduled successfully!", Toast.LENGTH_SHORT).show()
+                                                    } else {
+                                                        Toast.makeText(context, "Please pick a future time", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                },
+                                                cal.get(Calendar.HOUR_OF_DAY),
+                                                cal.get(Calendar.MINUTE),
+                                                false
+                                            ).show()
+                                        },
+                                        cal.get(Calendar.YEAR),
+                                        cal.get(Calendar.MONTH),
+                                        cal.get(Calendar.DAY_OF_MONTH)
+                                    ).show()
+                                }
+                            ) {
+                                Text("Pick Date & Time")
+                            }
+
+                            if (isScheduledRecordingEnabled && scheduledTimeMs > 0L) {
+                                OutlinedButton(onClick = {
+                                    val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                                    val intent = Intent(context, RecordingSchedulerReceiver::class.java).apply {
+                                        action = RecordingSchedulerReceiver.ACTION_SCHEDULED_RECORDING
+                                    }
+                                    val pendingIntent = PendingIntent.getBroadcast(
+                                        context,
+                                        0,
+                                        intent,
+                                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                                    )
+                                    alarmManager.cancel(pendingIntent)
+                                    scheduledTimeMs = 0L
+                                    isScheduledRecordingEnabled = false
+                                    configManager.scheduledRecordingTimeMs = 0L
+                                    configManager.isScheduledRecordingEnabled = false
+                                    Toast.makeText(context, "Schedule cancelled", Toast.LENGTH_SHORT).show()
+                                }) {
+                                    Text("Cancel Schedule")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Storage Location Card
             Card(
                 modifier = Modifier
@@ -719,4 +946,59 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(48.dp))
         }
     }
+}
+
+private fun checkAndRequestPermissionsForScheduling(context: Context): Boolean {
+    // 1. Notification Permission
+    if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+        if (context is ComponentActivity) {
+            ActivityCompat.requestPermissions(
+                context,
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                1004
+            )
+        }
+        Toast.makeText(context, "Please allow Notification permission for scheduled recording alerts", Toast.LENGTH_LONG).show()
+        return false
+    }
+
+    // 2. Overlay Permission
+    if (!Settings.canDrawOverlays(context)) {
+        try {
+            val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:${context.packageName}".toUri())
+            context.startActivity(intent)
+            Toast.makeText(context, "Please allow 'Display over other apps' permission for scheduled recording", Toast.LENGTH_LONG).show()
+        } catch (_: Exception) {
+            Toast.makeText(context, "Please enable 'Display over other apps' in Settings", Toast.LENGTH_LONG).show()
+        }
+        return false
+    }
+
+    // 3. Exact Alarm Permission
+    val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+    if (!alarmManager.canScheduleExactAlarms()) {
+        try {
+            val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, "package:${context.packageName}".toUri())
+            context.startActivity(intent)
+            Toast.makeText(context, "Please allow 'Alarms & reminders' permission for exact scheduling", Toast.LENGTH_LONG).show()
+        } catch (_: Exception) {
+            Toast.makeText(context, "Please enable 'Alarms & reminders' in Settings", Toast.LENGTH_LONG).show()
+        }
+        return false
+    }
+
+    // 4. Full Screen Intent Permission
+    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    if (!notificationManager.canUseFullScreenIntent()) {
+        try {
+            val intent = Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, "package:${context.packageName}".toUri())
+            context.startActivity(intent)
+            Toast.makeText(context, "Please allow 'Full Screen Intents' permission for automatic scheduled launch", Toast.LENGTH_LONG).show()
+        } catch (_: Exception) {
+            Toast.makeText(context, "Please enable 'Full Screen Intents' in Settings", Toast.LENGTH_LONG).show()
+        }
+        return false
+    }
+
+    return true
 }

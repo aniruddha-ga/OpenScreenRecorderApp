@@ -33,6 +33,7 @@ class RecordingOverlayService : Service() {
     private var screenHeight = 0
     private var pausedElapsedMs = 0L
     private var isExpanded = true
+    private var isControlsLocked = false
 
     private val collapseHandler = Handler(Looper.getMainLooper())
     private val collapseRunnable = Runnable { collapseOverlay() }
@@ -111,7 +112,7 @@ class RecordingOverlayService : Service() {
         val view: View = binding!!.root
 
         val onSurfaceVariantColor = TypedValue().let { tv ->
-            themedContext.theme.resolveAttribute(R.attr.colorOnSurfaceVariant, tv, true)
+            themedContext.theme.resolveAttribute(com.google.android.material.R.attr.colorOnSurfaceVariant, tv, true)
             tv.data
         }
         binding?.dragHandle?.imageTintList = ColorStateList.valueOf(onSurfaceVariantColor)
@@ -291,10 +292,13 @@ class RecordingOverlayService : Service() {
     }
 
     private fun setupButtons() {
-        val configManager = ConfigManager(this)
-        binding?.btnBrush?.visibility = if (configManager.isBrushEnabled) View.VISIBLE else View.GONE
-        binding?.btnCamera?.visibility = if (configManager.isCameraEnabled) View.VISIBLE else View.GONE
-        binding?.btnScreenshot?.visibility = if (configManager.isScreenshotEnabled) View.VISIBLE else View.GONE
+        updateLockState()
+
+        binding?.btnLock?.setOnClickListener {
+            resetCollapseTimer()
+            isControlsLocked = !isControlsLocked
+            updateLockState()
+        }
 
         binding?.btnBrush?.setOnClickListener {
             resetCollapseTimer()
@@ -369,6 +373,29 @@ class RecordingOverlayService : Service() {
             } catch (e: Exception) {
                 e.printStackTrace()
             }
+        }
+    }
+
+    private fun updateLockState() {
+        val configManager = ConfigManager(this)
+        if (isControlsLocked) {
+            binding?.btnLock?.setIconResource(R.drawable.ic_lock)
+            binding?.btnLock?.contentDescription = getString(R.string.btn_unlock)
+            binding?.btnBrush?.visibility = View.GONE
+            binding?.btnScreenshot?.visibility = View.GONE
+            binding?.btnCamera?.visibility = View.GONE
+            binding?.btnPause?.visibility = View.GONE
+            binding?.btnStop?.visibility = View.GONE
+            Toast.makeText(applicationContext, "Overlay controls locked", Toast.LENGTH_SHORT).show()
+        } else {
+            binding?.btnLock?.setIconResource(R.drawable.ic_lock_open)
+            binding?.btnLock?.contentDescription = getString(R.string.btn_lock)
+            binding?.btnBrush?.visibility = if (configManager.isBrushEnabled) View.VISIBLE else View.GONE
+            binding?.btnScreenshot?.visibility = if (configManager.isScreenshotEnabled) View.VISIBLE else View.GONE
+            binding?.btnCamera?.visibility = if (configManager.isCameraEnabled) View.VISIBLE else View.GONE
+            binding?.btnPause?.visibility = View.VISIBLE
+            binding?.btnStop?.visibility = View.VISIBLE
+            Toast.makeText(applicationContext, "Overlay controls unlocked", Toast.LENGTH_SHORT).show()
         }
     }
 
