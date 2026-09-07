@@ -149,9 +149,6 @@ class DrawingView @JvmOverloads constructor(
         }
     }
 
-    fun canUndo(): Boolean = items.isNotEmpty()
-    fun canRedo(): Boolean = undoStack.isNotEmpty()
-
     fun clear() {
         items.clear()
         undoStack.clear()

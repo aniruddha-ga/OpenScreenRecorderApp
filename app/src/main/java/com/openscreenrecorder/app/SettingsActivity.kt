@@ -35,6 +35,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
+import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -129,16 +132,23 @@ fun SettingsScreen(
     val context = LocalContext.current
     var micEnabled by remember { mutableStateOf(configManager.isMicEnabled) }
     var systemAudioEnabled by remember { mutableStateOf(configManager.isSystemAudioEnabled) }
-    var showTouches by remember { mutableStateOf(configManager.showTouches) }
+    val isSystemShowTouchesEnabled = remember(context) {
+        try {
+            Settings.System.getInt(context.contentResolver, "show_touches", 0) == 1
+        } catch (_: Exception) {
+            false
+        }
+    }
+    var showTouchesGuideDialog by remember { mutableStateOf(false) }
     var recordingOverlayEnabled by remember { mutableStateOf(configManager.isRecordingOverlayEnabled) }
     var floatingAutoLaunchEnabled by remember { mutableStateOf(configManager.isFloatingAutoLaunchEnabled) }
     var isBrushEnabled by remember { mutableStateOf(configManager.isBrushEnabled) }
     var isCameraEnabled by remember { mutableStateOf(configManager.isCameraEnabled) }
     var isScreenshotEnabled by remember { mutableStateOf(configManager.isScreenshotEnabled) }
     var isScreenshotWithDrawing by remember { mutableStateOf(configManager.isScreenshotWithDrawing) }
-    var autoStopTimerSecs by remember { mutableStateOf(configManager.autoStopTimerSeconds) }
+    var autoStopTimerSecs by remember { mutableIntStateOf(configManager.autoStopTimerSeconds) }
     var isAutoStartRecordingEnabled by remember { mutableStateOf(configManager.isAutoStartRecordingEnabled) }
-    var scheduledTimeMs by remember { mutableStateOf(configManager.scheduledRecordingTimeMs) }
+    var scheduledTimeMs by remember { mutableLongStateOf(configManager.scheduledRecordingTimeMs) }
     var isScheduledRecordingEnabled by remember { mutableStateOf(configManager.isScheduledRecordingEnabled) }
     var autoStopDropdownExpanded by remember { mutableStateOf(false) }
     var dynamicColors by remember { mutableStateOf(configManager.isDynamicColorsEnabled) }
@@ -494,34 +504,63 @@ fun SettingsScreen(
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), thickness = 1.dp)
 
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showTouchesGuideDialog = true }
+                            .padding(vertical = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Show Touches", color = MaterialTheme.colorScheme.onSurface)
+                            Text(
+                                text = "Show Touches (Touch Feedback)",
+                                color = MaterialTheme.colorScheme.onSurface,
+                                style = MaterialTheme.typography.titleSmall
+                            )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "Display visual touch feedback on screen during recording",
+                                text = "Display visual touch points on screen. Tap to view guide & enable in Developer Options.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Switch(
-                            checked = showTouches,
-                            onCheckedChange = { checked ->
-                                if (checked && !Settings.System.canWrite(context)) {
-                                    try {
-                                        context.startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, "package:${context.packageName}".toUri()))
-                                        Toast.makeText(context, "Please allow 'Write System Settings' permission for Show Touches", Toast.LENGTH_LONG).show()
-                                    } catch (_: Exception) {
-                                        Toast.makeText(context, "Could not open Write Settings screen", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                                showTouches = checked
-                                configManager.showTouches = checked
+
+                        Surface(
+                            onClick = { showTouchesGuideDialog = true },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSystemShowTouchesEnabled)
+                                MaterialTheme.colorScheme.primaryContainer
+                            else
+                                MaterialTheme.colorScheme.surfaceVariant,
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSystemShowTouchesEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = if (isSystemShowTouchesEnabled) "Active" else "Guide",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (isSystemShowTouchesEnabled)
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    else
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(12.dp),
+                                    tint = if (isSystemShowTouchesEnabled)
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    else
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
-                        )
+                        }
                     }
                 }
             }
@@ -945,6 +984,121 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(48.dp))
         }
+    }
+
+    if (showTouchesGuideDialog) {
+        AlertDialog(
+            onDismissRequest = { showTouchesGuideDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.TouchApp,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = {
+                Text(
+                    text = "Enable Show Touches (Show Taps)",
+                    textAlign = TextAlign.Center
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Android requires enabling 'Show taps' in Developer Options to render touch feedback on screen.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = "Step 1: Enable Developer Options",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "1. Go to Settings > About Phone\n2. Tap 'Build Number' 7 times continuously until Developer Mode is activated.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = "Step 2: Turn ON Show Taps",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "1. Open Developer Options\n2. Scroll down to the Input section\n3. Switch ON 'Show taps' / 'Show touches'.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showTouchesGuideDialog = false
+                        try {
+                            val intent = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
+                            context.startActivity(intent)
+                        } catch (_: Exception) {
+                            try {
+                                val intent = Intent(Settings.ACTION_SETTINGS)
+                                context.startActivity(intent)
+                            } catch (_: Exception) {
+                                Toast.makeText(context, "Could not open Settings", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                ) {
+                    Text("Open Developer Options")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        showTouchesGuideDialog = false
+                        try {
+                            val intent = Intent(Settings.ACTION_DEVICE_INFO_SETTINGS)
+                            context.startActivity(intent)
+                        } catch (_: Exception) {
+                            try {
+                                val intent = Intent(Settings.ACTION_SETTINGS)
+                                context.startActivity(intent)
+                            } catch (_: Exception) {
+                                Toast.makeText(context, "Could not open About Phone", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                ) {
+                    Text("Open About Phone")
+                }
+            }
+        )
     }
 }
 

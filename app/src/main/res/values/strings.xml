@@ -49,6 +49,7 @@
 
     <string name="ScreenRecordTileService_tile_start">Record</string>
     <string name="ScreenRecordTileService_tile_stop">Stop Recording</string>
+    <string name="ScreenshotTileService_tile_label">Take Screenshot</string>
 
     <string name="dialog_edit_text_rename_title">Title</string>
 

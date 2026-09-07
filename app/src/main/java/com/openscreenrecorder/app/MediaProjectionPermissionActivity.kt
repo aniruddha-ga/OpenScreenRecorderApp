@@ -4,9 +4,6 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.PixelFormat
-import android.hardware.display.DisplayManager
 import android.media.Image
 import android.media.ImageReader
 import android.media.projection.MediaProjectionConfig
@@ -122,18 +119,7 @@ class MediaProjectionPermissionActivity : Activity() {
      * Checks write system settings permission needed for show-touches feature.
      */
     private fun checkWriteSettingsPermission(): Boolean {
-        if (!configManager.showTouches) return true
-        return if (!Settings.System.canWrite(this)) {
-            try {
-                startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,
-                    "package:$packageName".toUri()))
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to launch write settings: ${e.message}")
-            }
-            false
-        } else {
-            true
-        }
+        return true
     }
 
     /*

@@ -42,8 +42,6 @@ class ConfigManager(private val context: Context) {
         private const val KEY_AUTO_START_RECORDING = "auto_start_recording"
         private const val KEY_SCHEDULED_RECORDING_TIME = "scheduled_recording_time"
         private const val KEY_SCHEDULED_RECORDING_ENABLED = "scheduled_recording_enabled"
-        private const val KEY_BRUSH_COLOR = "brush_color"
-        private const val KEY_BRUSH_SIZE = "brush_size"
 
         const val DEFAULT_FILENAME_PREFIX = "Screen_Record_"
         const val DEFAULT_DATE_FORMAT_PATTERN = "yyyyMMdd_HHmmss"
@@ -145,14 +143,6 @@ class ConfigManager(private val context: Context) {
     var isScheduledRecordingEnabled: Boolean
         get() = prefs.getBoolean(KEY_SCHEDULED_RECORDING_ENABLED, false)
         set(value) = prefs.edit { putBoolean(KEY_SCHEDULED_RECORDING_ENABLED, value) }
-
-    var brushColor: Int
-        get() = prefs.getInt(KEY_BRUSH_COLOR, 0xFFFF0000.toInt()) // Default Red
-        set(value) = prefs.edit { putInt(KEY_BRUSH_COLOR, value) }
-
-    var brushSize: Float
-        get() = prefs.getFloat(KEY_BRUSH_SIZE, 12f)
-        set(value) = prefs.edit { putFloat(KEY_BRUSH_SIZE, value) }
 
     /*
      * Generates custom file name using configured prefix and date-time format pattern.

@@ -198,8 +198,8 @@ class ScreenRecordService : Service() {
         val hasAudioPerm = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         val canRecordAudio = wantsAudio && hasAudioPerm
 
-        var fgsTypes = android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
-        if (canRecordAudio) fgsTypes = fgsTypes or android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        var fgsTypes = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+        if (canRecordAudio) fgsTypes = fgsTypes or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
         startForeground(NOTIFICATION_ID, buildRecordingNotification(), fgsTypes)
 
         totalPausedDurationUs = 0
