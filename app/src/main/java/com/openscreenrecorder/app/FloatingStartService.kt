@@ -160,8 +160,8 @@ class FloatingStartService : Service() {
 
         binding?.btnScreenshot?.setOnClickListener {
             binding?.root?.visibility = View.INVISIBLE
-            val intent = Intent(this, ScreenshotEditorActivity::class.java).apply {
-                putExtra(ScreenshotEditorActivity.EXTRA_MODE, ScreenshotEditorActivity.MODE_CAPTURE)
+            val intent = Intent(this, MediaProjectionPermissionActivity::class.java).apply {
+                putExtra("IS_SCREENSHOT", true)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             startActivity(intent)

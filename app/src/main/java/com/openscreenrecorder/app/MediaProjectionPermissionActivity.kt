@@ -1,17 +1,33 @@
 package com.openscreenrecorder.app
 
+import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.PixelFormat
+import android.hardware.display.DisplayManager
+import android.media.Image
+import android.media.ImageReader
 import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
+import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.HandlerThread
+import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
+import android.view.WindowManager
+import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import android.Manifest
+import androidx.core.graphics.createBitmap
 import androidx.core.net.toUri
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 
 /*
  * Transparent gateway activity that validates all required permissions
@@ -170,7 +186,19 @@ class MediaProjectionPermissionActivity : Activity() {
         if (requestCode == REQUEST_MEDIA_PROJECTION) {
             isProjectionRequestPending = false
             if (resultCode == RESULT_OK && data != null) {
-                startRecordingService(resultCode, data)
+                val isScreenshot = intent.getBooleanExtra("IS_SCREENSHOT", false)
+                if (isScreenshot) {
+                    val serviceIntent = Intent(this, ScreenRecordService::class.java).apply {
+                        action = ScreenRecordService.ACTION_TAKE_SCREENSHOT
+                        putExtra(ScreenRecordService.EXTRA_RESULT_CODE, resultCode)
+                        putExtra(ScreenRecordService.EXTRA_DATA, data)
+                        putExtra("OPEN_EDITOR", true)
+                    }
+                    startForegroundService(serviceIntent)
+                    finish()
+                } else {
+                    startRecordingService(resultCode, data)
+                }
             } else {
                 if (configManager.isFloatingAutoLaunchEnabled && Settings.canDrawOverlays(this)) {
                     try {

@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -125,6 +126,15 @@ fun ImageViewerScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = {
+                        val editIntent = Intent(context, ScreenshotEditorActivity::class.java).apply {
+                            putExtra(ScreenshotEditorActivity.EXTRA_IMAGE_URI, imageUri.toString())
+                            putExtra(ScreenshotEditorActivity.EXTRA_MODE, ScreenshotEditorActivity.MODE_EDIT)
+                        }
+                        context.startActivity(editIntent)
+                    }) {
+                        Icon(imageVector = Icons.Default.Edit, contentDescription = "Edit Screenshot")
+                    }
                     IconButton(onClick = {
                         val intent = Intent(Intent.ACTION_SEND).apply {
                             type = "image/png"

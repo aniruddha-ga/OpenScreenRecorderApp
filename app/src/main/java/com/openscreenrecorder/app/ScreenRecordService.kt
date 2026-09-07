@@ -1,6 +1,7 @@
 package com.openscreenrecorder.app
 
 import android.Manifest
+import android.app.Activity
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -10,6 +11,7 @@ import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.*
@@ -166,7 +168,16 @@ class ScreenRecordService : Service() {
                 }
                 ACTION_PAUSE -> pauseRecording()
                 ACTION_RESUME -> resumeRecording()
-                ACTION_TAKE_SCREENSHOT -> captureScreenshot()
+                ACTION_TAKE_SCREENSHOT -> {
+                    val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, -1)
+                    val data: Intent? = intent.getParcelableExtra(EXTRA_DATA, Intent::class.java)
+                    val openEditor = intent.getBooleanExtra("OPEN_EDITOR", false)
+                    if (isRecording) {
+                        captureScreenshot()
+                    } else if (data != null && resultCode == Activity.RESULT_OK) {
+                        captureStandaloneScreenshot(resultCode, data, openEditor)
+                    }
+                }
                 ACTION_STOP -> {
                     stopRecording()
                     stopForeground(STOP_FOREGROUND_REMOVE)
@@ -729,27 +740,9 @@ class ScreenRecordService : Service() {
             val image = try { reader.acquireLatestImage() } catch (_: Exception) { null }
             if (image != null) {
                 try {
-                    val planes = image.planes
-                    if (planes.isNotEmpty()) {
-                        val buffer = planes[0].buffer
-                        val pixelStride = planes[0].pixelStride
-                        val rowStride = planes[0].rowStride
-
-                        if (pixelStride > 0) {
-                            val widthInPixels = rowStride / pixelStride
-                            val bitmap = createBitmap(widthInPixels, screenHeight)
-                            bitmap.copyPixelsFromBuffer(buffer)
-
-                            val croppedBitmap = if (widthInPixels > screenWidth) {
-                                val cropped = Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight)
-                                bitmap.recycle()
-                                cropped
-                            } else {
-                                bitmap
-                            }
-
-                            saveScreenshotToGallery(croppedBitmap)
-                        }
+                    val processedBitmap = processCapturedImage(image, screenWidth, screenHeight)
+                    if (processedBitmap != null) {
+                        saveScreenshotToGallery(processedBitmap)
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error processing screenshot image: ${e.message}")
@@ -769,7 +762,7 @@ class ScreenRecordService : Service() {
         }
     }
 
-    private fun saveScreenshotToGallery(bitmap: Bitmap) {
+    private fun saveScreenshotToGallery(bitmap: Bitmap): Uri? {
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         val fileName = "Screen_Shot_$timestamp.png"
 
@@ -779,6 +772,7 @@ class ScreenRecordService : Service() {
             put(MediaStore.MediaColumns.RELATIVE_PATH, "DCIM/Recordings")
         }
 
+        var savedUri: Uri? = null
         try {
             val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
             if (uri != null) {
@@ -787,6 +781,7 @@ class ScreenRecordService : Service() {
                 }
                 contentResolver.notifyChange(uri, null)
                 showToastOnMain("Screenshot saved to gallery")
+                savedUri = uri
             } else {
                 Log.e(TAG, "Failed to insert screenshot into MediaStore")
             }
@@ -798,6 +793,169 @@ class ScreenRecordService : Service() {
                     bitmap.recycle()
                 }
             } catch (_: Exception) {}
+        }
+        return savedUri
+    }
+
+    private fun processCapturedImage(image: Image, targetWidth: Int, targetHeight: Int): Bitmap? {
+        val planes = image.planes
+        if (planes.isEmpty()) return null
+        val buffer = planes[0].buffer
+        val pixelStride = planes[0].pixelStride
+        val rowStride = planes[0].rowStride
+        if (pixelStride <= 0) return null
+
+        val widthInPixels = rowStride / pixelStride
+        val rawBitmap = createBitmap(widthInPixels, targetHeight)
+        rawBitmap.copyPixelsFromBuffer(buffer)
+
+        val cropWidth = widthInPixels.coerceAtMost(targetWidth)
+        val bitmapToProcess = if (cropWidth < widthInPixels) {
+            val cropped = Bitmap.createBitmap(rawBitmap, 0, 0, cropWidth, targetHeight)
+            rawBitmap.recycle()
+            cropped
+        } else {
+            rawBitmap
+        }
+
+        val pixels = IntArray(cropWidth * targetHeight)
+        bitmapToProcess.getPixels(pixels, 0, cropWidth, 0, 0, cropWidth, targetHeight)
+
+        var maxRgb = 0
+        for (i in pixels.indices) {
+            val pixel = pixels[i]
+            val a = (pixel ushr 24) and 0xFF
+            var r = (pixel ushr 16) and 0xFF
+            var g = (pixel ushr 8) and 0xFF
+            var b = pixel and 0xFF
+
+            if (a in 1..254) {
+                val unpremulScale = 255f / a
+                r = (r * unpremulScale).toInt().coerceAtMost(255)
+                g = (g * unpremulScale).toInt().coerceAtMost(255)
+                b = (b * unpremulScale).toInt().coerceAtMost(255)
+            }
+
+            if (r > maxRgb) maxRgb = r
+            if (g > maxRgb) maxRgb = g
+            if (b > maxRgb) maxRgb = b
+
+            pixels[i] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+        }
+
+        if (maxRgb in 1..249) {
+            val gain = (255.0f / maxRgb.coerceAtLeast(60)).coerceAtMost(2.5f)
+            if (gain > 1.01f) {
+                for (i in pixels.indices) {
+                    val pixel = pixels[i]
+                    val r = (((pixel ushr 16) and 0xFF) * gain).toInt().coerceAtMost(255)
+                    val g = (((pixel ushr 8) and 0xFF) * gain).toInt().coerceAtMost(255)
+                    val b = ((pixel and 0xFF) * gain).toInt().coerceAtMost(255)
+                    pixels[i] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+                }
+            }
+        }
+
+        bitmapToProcess.setPixels(pixels, 0, cropWidth, 0, 0, cropWidth, targetHeight)
+        bitmapToProcess.setHasAlpha(false)
+        return bitmapToProcess
+    }
+
+    private fun captureStandaloneScreenshot(resultCode: Int, data: Intent, openEditor: Boolean) {
+        val notification = buildRecordingNotification()
+        startForeground(
+            NOTIFICATION_ID,
+            notification,
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+        )
+
+        val mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        val projection = mediaProjectionManager.getMediaProjection(resultCode, data) ?: run {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return
+        }
+
+        val handlerThread = HandlerThread("StandaloneScreenshotThread").apply { start() }
+        val bgHandler = Handler(handlerThread.looper)
+        val isFinished = AtomicBoolean(false)
+
+        var virtualDisplay: VirtualDisplay? = null
+        var reader: ImageReader? = null
+
+        val projectionCallback = object : MediaProjection.Callback() {
+            override fun onStop() {
+                Log.d(TAG, "Standalone screenshot MediaProjection stopped")
+            }
+        }
+        projection.registerCallback(projectionCallback, bgHandler)
+
+        val cleanup = Runnable {
+            if (isFinished.compareAndSet(false, true)) {
+                try { reader?.close() } catch (_: Exception) {}
+                try { virtualDisplay?.release() } catch (_: Exception) {}
+                try { projection.unregisterCallback(projectionCallback) } catch (_: Exception) {}
+                try { projection.stop() } catch (_: Exception) {}
+                try { handlerThread.quitSafely() } catch (_: Exception) {}
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+        }
+
+        try {
+            val imgReader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 2)
+            reader = imgReader
+            virtualDisplay = projection.createVirtualDisplay(
+                "StandaloneScreenshotDisplay",
+                screenWidth,
+                screenHeight,
+                resources.displayMetrics.densityDpi,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                imgReader.surface,
+                null,
+                bgHandler
+            )
+
+            bgHandler.postDelayed({
+                if (!isFinished.get()) {
+                    Log.w(TAG, "Standalone screenshot capture timed out")
+                    cleanup.run()
+                }
+            }, 2000)
+
+            reader.setOnImageAvailableListener({ r ->
+                if (isFinished.get()) return@setOnImageAvailableListener
+                var savedUri: Uri? = null
+                try {
+                    val image = try { r.acquireLatestImage() } catch (_: Exception) { null }
+                    if (image != null) {
+                        val processedBitmap = processCapturedImage(image, screenWidth, screenHeight)
+                        if (processedBitmap != null) {
+                            savedUri = saveScreenshotToGallery(processedBitmap)
+                        }
+                        try { image.close() } catch (_: Exception) {}
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in standalone screenshot capture: ${e.message}")
+                } finally {
+                    cleanup.run()
+                    if (openEditor && savedUri != null) {
+                        val editIntent = Intent(this, ScreenshotEditorActivity::class.java).apply {
+                            putExtra(ScreenshotEditorActivity.EXTRA_IMAGE_URI, savedUri.toString())
+                            putExtra(ScreenshotEditorActivity.EXTRA_MODE, ScreenshotEditorActivity.MODE_EDIT)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(editIntent)
+                    }
+                }
+            }, bgHandler)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed standalone screenshot creation: ${e.message}")
+            try { projection.stop() } catch (_: Exception) {}
+            try { handlerThread.quitSafely() } catch (_: Exception) {}
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
         }
     }
 

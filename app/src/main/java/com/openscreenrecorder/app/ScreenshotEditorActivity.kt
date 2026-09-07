@@ -1,5 +1,6 @@
 package com.openscreenrecorder.app
 
+import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Intent
 import android.graphics.*
@@ -13,7 +14,9 @@ import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
+import java.util.concurrent.atomic.AtomicBoolean
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
@@ -30,7 +33,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -41,18 +46,28 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -116,9 +131,14 @@ class ScreenshotEditorActivity : ComponentActivity() {
 
         val uriStr = intent.getStringExtra(EXTRA_IMAGE_URI)
         val mode = intent.getStringExtra(EXTRA_MODE) ?: MODE_CAPTURE
+        @Suppress("DEPRECATION")
+        val projectionData = intent.getParcelableExtra<Intent>("PROJECTION_DATA")
+        val resultCode = intent.getIntExtra("PROJECTION_RESULT_CODE", RESULT_OK)
 
         if (!uriStr.isNullOrEmpty()) {
             loadBitmapFromUri(uriStr.toUri())
+        } else if (projectionData != null) {
+            setupMediaProjection(resultCode, projectionData)
         } else if (mode == MODE_SCROLLING) {
             requestScreenCapturePermission()
         } else {
@@ -184,6 +204,11 @@ class ScreenshotEditorActivity : ComponentActivity() {
     private fun setupMediaProjection(resultCode: Int, data: Intent) {
         try {
             mediaProjection = mediaProjectionManager?.getMediaProjection(resultCode, data)
+            mediaProjection?.registerCallback(object : MediaProjection.Callback() {
+                override fun onStop() {
+                    Log.d(TAG, "MediaProjection stopped")
+                }
+            }, Handler(Looper.getMainLooper()))
             val mode = intent.getStringExtra(EXTRA_MODE)
             if (mode == MODE_SCROLLING) {
                 startScrollingOverlay()
@@ -196,20 +221,66 @@ class ScreenshotEditorActivity : ComponentActivity() {
     }
 
     private fun captureSingleFrameAndEdit() {
-        captureScreenFrame { bitmap ->
-            if (bitmap != null) {
-                currentBitmapState.value = bitmap
-            } else {
-                Toast.makeText(this, "Failed to capture screenshot", Toast.LENGTH_SHORT).show()
+        moveTaskToBack(true)
+        Handler(Looper.getMainLooper()).postDelayed({
+            captureScreenFrame { bitmap ->
+                if (bitmap != null) {
+                    currentBitmapState.value = bitmap
+                    val intent = Intent(this, ScreenshotEditorActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    }
+                    startActivity(intent)
+                } else {
+                    Toast.makeText(this, "Failed to capture screenshot", Toast.LENGTH_SHORT).show()
+                    finish()
+                }
+                stopMediaProjection()
             }
-            stopMediaProjection()
-        }
+        }, 300)
     }
 
     private fun captureScreenFrame(onCaptured: (Bitmap?) -> Unit) {
+        val handlerThread = HandlerThread("ScreenshotCaptureThread").apply { start() }
+        val bgHandler = Handler(handlerThread.looper)
+        val isCaptured = AtomicBoolean(false)
+
         try {
             val reader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 2)
             imageReader = reader
+
+            val cleanup = Runnable {
+                try { reader.close() } catch (_: Exception) {}
+                try { virtualDisplay?.release(); virtualDisplay = null } catch (_: Exception) {}
+                try { handlerThread.quitSafely() } catch (_: Exception) {}
+            }
+
+            bgHandler.postDelayed({
+                if (!isCaptured.get()) {
+                    Log.w(TAG, "Screenshot capture timed out")
+                    isCaptured.set(true)
+                    cleanup.run()
+                    Handler(Looper.getMainLooper()).post { onCaptured(null) }
+                }
+            }, 1500)
+
+            reader.setOnImageAvailableListener({ r ->
+                if (isCaptured.getAndSet(true)) return@setOnImageAvailableListener
+                var capturedBitmap: Bitmap? = null
+                try {
+                    val image: Image? = try { r.acquireLatestImage() } catch (_: Exception) { null }
+                    if (image != null) {
+                        capturedBitmap = processCapturedImage(image, screenWidth, screenHeight)
+                        try { image.close() } catch (_: Exception) {}
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to capture screen frame: ${e.message}")
+                } finally {
+                    cleanup.run()
+                    Handler(Looper.getMainLooper()).post {
+                        onCaptured(capturedBitmap)
+                    }
+                }
+            }, bgHandler)
 
             virtualDisplay = mediaProjection?.createVirtualDisplay(
                 "ScreenshotEditorDisplay",
@@ -219,46 +290,80 @@ class ScreenshotEditorActivity : ComponentActivity() {
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                 reader.surface,
                 null,
-                null
+                bgHandler
             )
-
-            Handler(Looper.getMainLooper()).postDelayed({
-                var capturedBitmap: Bitmap? = null
-                try {
-                    val image: Image? = reader.acquireLatestImage()
-                    if (image != null) {
-                        val planes = image.planes
-                        val buffer = planes[0].buffer
-                        val pixelStride = planes[0].pixelStride
-                        val rowStride = planes[0].rowStride
-
-                        val widthInPixels = rowStride / pixelStride
-                        val bmp = createBitmap(widthInPixels, screenHeight)
-                        bmp.copyPixelsFromBuffer(buffer)
-
-                        capturedBitmap = if (widthInPixels > screenWidth) {
-                            val cropped = Bitmap.createBitmap(bmp, 0, 0, screenWidth, screenHeight)
-                            bmp.recycle()
-                            cropped
-                        } else {
-                            bmp
-                        }
-                        image.close()
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to process image frame: ${e.message}")
-                } finally {
-                    try { reader.close() } catch (_: Exception) {}
-                    try { virtualDisplay?.release() } catch (_: Exception) {}
-                    onCaptured(capturedBitmap)
-                }
-            }, 300)
         } catch (e: Exception) {
             Log.e(TAG, "Error creating virtual display: ${e.message}")
+            try { handlerThread.quitSafely() } catch (_: Exception) {}
             onCaptured(null)
         }
     }
 
+    private fun processCapturedImage(image: Image, targetWidth: Int, targetHeight: Int): Bitmap? {
+        val planes = image.planes
+        if (planes.isEmpty()) return null
+        val buffer = planes[0].buffer
+        val pixelStride = planes[0].pixelStride
+        val rowStride = planes[0].rowStride
+        if (pixelStride <= 0) return null
+
+        val widthInPixels = rowStride / pixelStride
+        val rawBitmap = createBitmap(widthInPixels, targetHeight)
+        rawBitmap.copyPixelsFromBuffer(buffer)
+
+        val cropWidth = widthInPixels.coerceAtMost(targetWidth)
+        val bitmapToProcess = if (cropWidth < widthInPixels) {
+            val cropped = Bitmap.createBitmap(rawBitmap, 0, 0, cropWidth, targetHeight)
+            rawBitmap.recycle()
+            cropped
+        } else {
+            rawBitmap
+        }
+
+        val pixels = IntArray(cropWidth * targetHeight)
+        bitmapToProcess.getPixels(pixels, 0, cropWidth, 0, 0, cropWidth, targetHeight)
+
+        var maxRgb = 0
+        for (i in pixels.indices) {
+            val pixel = pixels[i]
+            val a = (pixel ushr 24) and 0xFF
+            var r = (pixel ushr 16) and 0xFF
+            var g = (pixel ushr 8) and 0xFF
+            var b = pixel and 0xFF
+
+            if (a in 1..254) {
+                val unpremulScale = 255f / a
+                r = (r * unpremulScale).toInt().coerceAtMost(255)
+                g = (g * unpremulScale).toInt().coerceAtMost(255)
+                b = (b * unpremulScale).toInt().coerceAtMost(255)
+            }
+
+            if (r > maxRgb) maxRgb = r
+            if (g > maxRgb) maxRgb = g
+            if (b > maxRgb) maxRgb = b
+
+            pixels[i] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+        }
+
+        if (maxRgb in 1..249) {
+            val gain = (255.0f / maxRgb.coerceAtLeast(60)).coerceAtMost(2.5f)
+            if (gain > 1.01f) {
+                for (i in pixels.indices) {
+                    val pixel = pixels[i]
+                    val r = (((pixel ushr 16) and 0xFF) * gain).toInt().coerceAtMost(255)
+                    val g = (((pixel ushr 8) and 0xFF) * gain).toInt().coerceAtMost(255)
+                    val b = ((pixel and 0xFF) * gain).toInt().coerceAtMost(255)
+                    pixels[i] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+                }
+            }
+        }
+
+        bitmapToProcess.setPixels(pixels, 0, cropWidth, 0, 0, cropWidth, targetHeight)
+        bitmapToProcess.setHasAlpha(false)
+        return bitmapToProcess
+    }
+
+    @SuppressLint("SetTextI18n")
     private fun startScrollingOverlay() {
         if (!Settings.canDrawOverlays(this)) {
             Toast.makeText(this, "Overlay permission required for Scrolling Screenshot", Toast.LENGTH_LONG).show()
@@ -408,15 +513,145 @@ enum class AnnotationTool {
     CROP
 }
 
+enum class AppFontFamily(val displayName: String, val typefaceName: String, val style: Int) {
+    SANS_SERIF("Sans-Serif", "sans-serif", Typeface.NORMAL),
+    SERIF("Serif", "serif", Typeface.NORMAL),
+    MONOSPACE("Monospace", "monospace", Typeface.NORMAL),
+    CURSIVE("Cursive", "cursive", Typeface.BOLD),
+    CASUAL("Casual", "casual", Typeface.NORMAL),
+    BOLD("Bold", "sans-serif", Typeface.BOLD),
+    CONDENSED("Condensed", "sans-serif-condensed", Typeface.BOLD);
+
+    fun getTypeface(): Typeface {
+        return Typeface.create(typefaceName, style)
+    }
+}
+
+fun getFontTypeface(fontName: String): Typeface {
+    return try {
+        AppFontFamily.valueOf(fontName).getTypeface()
+    } catch (_: Exception) {
+        Typeface.DEFAULT
+    }
+}
+
 data class DrawnAnnotation(
     val tool: AnnotationTool,
     val path: Path,
-    val startOffset: Offset,
-    val endOffset: Offset,
+    var startOffset: Offset,
+    var endOffset: Offset,
     val color: Color,
     val strokeWidth: Float,
-    val textNote: String = ""
+    val textNote: String = "",
+    val fontName: String = AppFontFamily.SANS_SERIF.name,
+    val fontSize: Float = 48f
 )
+
+fun findTextAnnotationIndexAt(
+    annotations: List<DrawnAnnotation>,
+    offset: Offset
+): Int {
+    val paint = Paint().apply { isAntiAlias = true }
+    for (i in annotations.indices.reversed()) {
+        val item = annotations[i]
+        if (item.tool == AnnotationTool.TEXT && item.textNote.isNotBlank()) {
+            paint.textSize = item.fontSize
+            paint.typeface = getFontTypeface(item.fontName)
+            val bounds = Rect()
+            paint.getTextBounds(item.textNote, 0, item.textNote.length, bounds)
+            val textWidth = paint.measureText(item.textNote).coerceAtLeast(40f)
+            val textHeight = bounds.height().toFloat().coerceAtLeast(item.fontSize)
+
+            val left = item.startOffset.x - 24f
+            val top = item.startOffset.y - textHeight - 24f
+            val right = item.startOffset.x + textWidth + 24f
+            val bottom = item.startOffset.y + 24f
+
+            if (offset.x in left..right && offset.y in top..bottom) {
+                return i
+            }
+        }
+    }
+    return -1
+}
+
+fun eraseAnnotationAt(
+    annotations: SnapshotStateList<DrawnAnnotation>,
+    undoStack: SnapshotStateList<DrawnAnnotation>,
+    touchOffset: Offset,
+    eraserRadius: Float
+): Boolean {
+    var erasedAny = false
+    val paint = Paint().apply { isAntiAlias = true }
+
+    for (i in annotations.indices.reversed()) {
+        val item = annotations[i]
+        var hit = false
+
+        when (item.tool) {
+            AnnotationTool.TEXT -> {
+                if (item.textNote.isNotBlank()) {
+                    paint.textSize = item.fontSize
+                    paint.typeface = getFontTypeface(item.fontName)
+                    val bounds = Rect()
+                    paint.getTextBounds(item.textNote, 0, item.textNote.length, bounds)
+                    val textWidth = paint.measureText(item.textNote).coerceAtLeast(40f)
+                    val textHeight = bounds.height().toFloat().coerceAtLeast(item.fontSize)
+
+                    val left = item.startOffset.x - eraserRadius
+                    val top = item.startOffset.y - textHeight - eraserRadius
+                    val right = item.startOffset.x + textWidth + eraserRadius
+                    val bottom = item.startOffset.y + eraserRadius
+
+                    if (touchOffset.x in left..right && touchOffset.y in top..bottom) {
+                        hit = true
+                    }
+                }
+            }
+            AnnotationTool.RECTANGLE, AnnotationTool.CIRCLE -> {
+                val left = minOf(item.startOffset.x, item.endOffset.x) - eraserRadius
+                val top = minOf(item.startOffset.y, item.endOffset.y) - eraserRadius
+                val right = maxOf(item.startOffset.x, item.endOffset.x) + eraserRadius
+                val bottom = maxOf(item.startOffset.y, item.endOffset.y) + eraserRadius
+
+                if (touchOffset.x in left..right && touchOffset.y in top..bottom) {
+                    hit = true
+                }
+            }
+            AnnotationTool.ARROW -> {
+                val dist = distanceToSegment(touchOffset, item.startOffset, item.endOffset)
+                if (dist <= eraserRadius + item.strokeWidth) {
+                    hit = true
+                }
+            }
+            AnnotationTool.PEN, AnnotationTool.ERASER -> {
+                val bounds = RectF()
+                item.path.asAndroidPath().computeBounds(bounds, true)
+                if (touchOffset.x >= bounds.left - eraserRadius && touchOffset.x <= bounds.right + eraserRadius &&
+                    touchOffset.y >= bounds.top - eraserRadius && touchOffset.y <= bounds.bottom + eraserRadius) {
+                    hit = true
+                }
+            }
+            else -> {}
+        }
+
+        if (hit) {
+            val removed = annotations.removeAt(i)
+            undoStack.add(removed)
+            erasedAny = true
+        }
+    }
+    return erasedAny
+}
+
+private fun distanceToSegment(p: Offset, v: Offset, w: Offset): Float {
+    val l2 = (w.x - v.x) * (w.x - v.x) + (w.y - v.y) * (w.y - v.y)
+    if (l2 == 0f) return (p - v).getDistance()
+    var t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2
+    t = t.coerceIn(0f, 1f)
+    val projection = Offset(v.x + t * (w.x - v.x), v.y + t * (w.y - v.y))
+    return (p - projection).getDistance()
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -441,6 +676,14 @@ fun ScreenshotEditorScreen(
 
     var textInputText by remember { mutableStateOf("") }
     var showTextDialog by remember { mutableStateOf(false) }
+
+    var draggingTextIndex by remember { mutableIntStateOf(-1) }
+    var editingTextIndex by remember { mutableIntStateOf(-1) }
+    var selectedTextIndex by remember { mutableIntStateOf(-1) }
+    var pendingTextPlacementOffset by remember { mutableStateOf(Offset(200f, 300f)) }
+    var selectedFont by remember { mutableStateOf(AppFontFamily.SANS_SERIF) }
+    var selectedFontSize by remember { mutableFloatStateOf(48f) }
+    var eraserPosition by remember { mutableStateOf<Offset?>(null) }
 
     // Crop bounds
     var cropLeft by remember { mutableFloatStateOf(0f) }
@@ -529,6 +772,8 @@ fun ScreenshotEditorScreen(
                 }
                 AnnotationTool.TEXT -> {
                     textPaint.color = item.color.toArgb()
+                    textPaint.textSize = item.fontSize
+                    textPaint.typeface = getFontTypeface(item.fontName)
                     canvas.drawText(item.textNote, item.startOffset.x, item.startOffset.y, textPaint)
                 }
                 else -> {}
@@ -608,10 +853,12 @@ fun ScreenshotEditorScreen(
                     }
                 }
 
-                // Tools row
+                // Tools row (Horizontally Scrollable)
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceAround,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     FilterChip(
@@ -642,10 +889,21 @@ fun ScreenshotEditorScreen(
                         selected = activeTool == AnnotationTool.TEXT,
                         onClick = {
                             activeTool = AnnotationTool.TEXT
+                            editingTextIndex = -1
+                            textInputText = ""
+                            pendingTextPlacementOffset = Offset(200f, 300f)
+                            selectedFont = AppFontFamily.SANS_SERIF
+                            selectedFontSize = 48f
                             showTextDialog = true
                         },
                         label = { Text("Text") },
                         leadingIcon = { Icon(Icons.Default.TextFields, contentDescription = null) }
+                    )
+                    FilterChip(
+                        selected = activeTool == AnnotationTool.ERASER,
+                        onClick = { activeTool = AnnotationTool.ERASER },
+                        label = { Text("Eraser") },
+                        leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) }
                     )
                     FilterChip(
                         selected = activeTool == AnnotationTool.CROP,
@@ -685,24 +943,58 @@ fun ScreenshotEditorScreen(
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
-                    .pointerInput(activeTool) {
+                    .pointerInput(Unit) {
                         detectDragGestures(
                             onDragStart = { offset ->
                                 dragStart = offset
                                 dragEnd = offset
-                                if (activeTool == AnnotationTool.PEN || activeTool == AnnotationTool.ERASER) {
-                                    val p = Path().apply { moveTo(offset.x, offset.y) }
-                                    currentPath = p
+                                if (activeTool == AnnotationTool.ERASER) {
+                                    eraserPosition = offset
+                                    selectedTextIndex = -1
+                                    eraseAnnotationAt(annotations, undoStack, offset, (strokeWidth * 3.5f).coerceAtLeast(36f))
+                                } else {
+                                    eraserPosition = null
+                                    val hitIndex = findTextAnnotationIndexAt(annotations, offset)
+                                    if (hitIndex != -1) {
+                                        draggingTextIndex = hitIndex
+                                        selectedTextIndex = hitIndex
+                                        val item = annotations[hitIndex]
+                                        activeColor = item.color
+                                    } else {
+                                        draggingTextIndex = -1
+                                        selectedTextIndex = -1
+                                        if (activeTool == AnnotationTool.PEN) {
+                                            val p = Path().apply { moveTo(offset.x, offset.y) }
+                                            currentPath = p
+                                        } else if (activeTool == AnnotationTool.TEXT) {
+                                            pendingTextPlacementOffset = offset
+                                            editingTextIndex = -1
+                                            textInputText = ""
+                                            selectedFont = AppFontFamily.SANS_SERIF
+                                            selectedFontSize = 48f
+                                            showTextDialog = true
+                                        }
+                                    }
                                 }
                             },
-                            onDrag = { change, _ ->
+                            onDrag = { change, dragAmount ->
                                 dragEnd = change.position
-                                if (activeTool == AnnotationTool.PEN || activeTool == AnnotationTool.ERASER) {
+                                if (activeTool == AnnotationTool.ERASER) {
+                                    eraserPosition = change.position
+                                    eraseAnnotationAt(annotations, undoStack, change.position, (strokeWidth * 3.5f).coerceAtLeast(36f))
+                                } else if (draggingTextIndex != -1 && draggingTextIndex in annotations.indices) {
+                                    val item = annotations[draggingTextIndex]
+                                    val newPos = Offset(item.startOffset.x + dragAmount.x, item.startOffset.y + dragAmount.y)
+                                    annotations[draggingTextIndex] = item.copy(startOffset = newPos)
+                                } else if (activeTool == AnnotationTool.PEN) {
                                     currentPath?.lineTo(change.position.x, change.position.y)
                                 }
                             },
                             onDragEnd = {
-                                if (activeTool == AnnotationTool.PEN || activeTool == AnnotationTool.ERASER) {
+                                eraserPosition = null
+                                if (draggingTextIndex != -1) {
+                                    draggingTextIndex = -1
+                                } else if (activeTool == AnnotationTool.PEN) {
                                     currentPath?.let { p ->
                                         annotations.add(
                                             DrawnAnnotation(
@@ -732,13 +1024,12 @@ fun ScreenshotEditorScreen(
                         )
                     }
             ) {
-                val scale = minOf(size.width / currentBitmap.width, size.height / currentBitmap.height)
                 drawImage(imageBitmap)
 
                 // Render saved annotations
-                for (item in annotations) {
+                annotations.forEachIndexed { index, item ->
                     when (item.tool) {
-                        AnnotationTool.PEN, AnnotationTool.ERASER -> {
+                        AnnotationTool.PEN -> {
                             drawPath(
                                 path = item.path,
                                 color = item.color,
@@ -771,16 +1062,32 @@ fun ScreenshotEditorScreen(
                             drawOval(color = item.color, topLeft = topLeft, size = rectSize, style = Stroke(item.strokeWidth))
                         }
                         AnnotationTool.TEXT -> {
+                            val paint = Paint().apply {
+                                color = item.color.toArgb()
+                                textSize = item.fontSize
+                                typeface = getFontTypeface(item.fontName)
+                                isAntiAlias = true
+                            }
                             drawContext.canvas.nativeCanvas.drawText(
                                 item.textNote,
                                 item.startOffset.x,
                                 item.startOffset.y,
-                                Paint().apply {
-                                    color = item.color.toArgb()
-                                    textSize = 42f
-                                    isAntiAlias = true
-                                }
+                                paint
                             )
+
+                            if (index == draggingTextIndex || index == editingTextIndex || index == selectedTextIndex) {
+                                val textWidth = paint.measureText(item.textNote).coerceAtLeast(30f)
+                                val bounds = Rect()
+                                paint.getTextBounds(item.textNote, 0, item.textNote.length, bounds)
+                                val rectTopLeft = Offset(item.startOffset.x - 8f, item.startOffset.y - bounds.height() - 8f)
+                                val rectSize = Size(textWidth + 16f, bounds.height() + 16f)
+                                drawRect(
+                                    color = Color.Cyan,
+                                    topLeft = rectTopLeft,
+                                    size = rectSize,
+                                    style = Stroke(width = 3f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f))
+                                )
+                            }
                         }
                         else -> {}
                     }
@@ -802,6 +1109,97 @@ fun ScreenshotEditorScreen(
                     val rectSize = Size(abs(dragEnd.x - dragStart.x), abs(dragEnd.y - dragStart.y))
                     drawOval(color = activeColor, topLeft = topLeft, size = rectSize, style = Stroke(strokeWidth))
                 }
+
+                // Render live Eraser Ring
+                eraserPosition?.let { pos ->
+                    val radius = (strokeWidth * 3.5f).coerceAtLeast(36f)
+                    drawCircle(
+                        color = Color.White.copy(alpha = 0.35f),
+                        radius = radius,
+                        center = pos
+                    )
+                    drawCircle(
+                        color = Color.Red,
+                        radius = radius,
+                        center = pos,
+                        style = Stroke(width = 3f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f))
+                    )
+                }
+            }
+
+            // Floating control bar for selected text annotation
+            if (selectedTextIndex in annotations.indices && annotations[selectedTextIndex].tool == AnnotationTool.TEXT) {
+                val selectedItem = annotations[selectedTextIndex]
+                Card(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 16.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                    elevation = CardDefaults.cardElevation(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Text: \"${selectedItem.textNote.take(10)}${if (selectedItem.textNote.length > 10) "..." else ""}\"",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        // Edit Button
+                        IconButton(
+                            onClick = {
+                                editingTextIndex = selectedTextIndex
+                                textInputText = selectedItem.textNote
+                                selectedFont = try { AppFontFamily.valueOf(selectedItem.fontName) } catch (_: Exception) { AppFontFamily.SANS_SERIF }
+                                selectedFontSize = selectedItem.fontSize
+                                activeColor = selectedItem.color
+                                showTextDialog = true
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Edit Text",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        // Delete Button
+                        IconButton(
+                            onClick = {
+                                if (selectedTextIndex in annotations.indices) {
+                                    val removed = annotations.removeAt(selectedTextIndex)
+                                    undoStack.add(removed)
+                                    selectedTextIndex = -1
+                                    draggingTextIndex = -1
+                                }
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete Text",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+
+                        // Close/Deselect Button
+                        IconButton(
+                            onClick = { selectedTextIndex = -1 },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Deselect",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -809,40 +1207,159 @@ fun ScreenshotEditorScreen(
     if (showTextDialog) {
         AlertDialog(
             onDismissRequest = { showTextDialog = false },
-            title = { Text("Add Text Annotation") },
+            title = { Text(if (editingTextIndex != -1) "Edit Text Annotation" else "Add Text Annotation") },
             text = {
-                OutlinedTextField(
-                    value = textInputText,
-                    onValueChange = { textInputText = it },
-                    placeholder = { Text("Enter text note...") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedTextField(
+                        value = textInputText,
+                        onValueChange = { textInputText = it },
+                        placeholder = { Text("Enter text note...") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Text(
+                        text = "Font Family:",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        AppFontFamily.entries.forEach { font ->
+                            FilterChip(
+                                selected = selectedFont == font,
+                                onClick = { selectedFont = font },
+                                label = {
+                                    Text(
+                                        text = font.displayName,
+                                        fontWeight = if (font.style == Typeface.BOLD) FontWeight.Bold else FontWeight.Normal,
+                                        fontFamily = when (font) {
+                                            AppFontFamily.SERIF -> FontFamily.Serif
+                                            AppFontFamily.MONOSPACE -> FontFamily.Monospace
+                                            AppFontFamily.CURSIVE -> FontFamily.Cursive
+                                            else -> FontFamily.Default
+                                        }
+                                    )
+                                }
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Font Size: ${selectedFontSize.toInt()} sp",
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+                    Slider(
+                        value = selectedFontSize,
+                        onValueChange = { selectedFontSize = it },
+                        valueRange = 24f..96f,
+                        steps = 12,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    if (textInputText.isNotBlank()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    MaterialTheme.colorScheme.surfaceVariant,
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .padding(12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Canvas(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(50.dp)
+                            ) {
+                                val paint = Paint().apply {
+                                    color = activeColor.toArgb()
+                                    textSize = selectedFontSize
+                                    typeface = selectedFont.getTypeface()
+                                    isAntiAlias = true
+                                    textAlign = Paint.Align.CENTER
+                                }
+                                drawContext.canvas.nativeCanvas.drawText(
+                                    textInputText,
+                                    size.width / 2f,
+                                    size.height / 2f + selectedFontSize / 3f,
+                                    paint
+                                )
+                            }
+                        }
+                    }
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
                     if (textInputText.isNotBlank()) {
-                        annotations.add(
-                            DrawnAnnotation(
-                                tool = AnnotationTool.TEXT,
-                                path = Path(),
-                                startOffset = Offset(100f, 200f),
-                                endOffset = Offset.Zero,
-                                color = activeColor,
-                                strokeWidth = strokeWidth,
-                                textNote = textInputText
+                        if (editingTextIndex in annotations.indices) {
+                            val item = annotations[editingTextIndex]
+                            annotations[editingTextIndex] = item.copy(
+                                textNote = textInputText,
+                                fontName = selectedFont.name,
+                                fontSize = selectedFontSize,
+                                color = activeColor
                             )
-                        )
+                        } else {
+                            annotations.add(
+                                DrawnAnnotation(
+                                    tool = AnnotationTool.TEXT,
+                                    path = Path(),
+                                    startOffset = pendingTextPlacementOffset,
+                                    endOffset = Offset.Zero,
+                                    color = activeColor,
+                                    strokeWidth = strokeWidth,
+                                    textNote = textInputText,
+                                    fontName = selectedFont.name,
+                                    fontSize = selectedFontSize
+                                )
+                            )
+                        }
                         textInputText = ""
                     }
                     showTextDialog = false
                 }) {
-                    Text("Add")
+                    Text(if (editingTextIndex != -1) "Save" else "Add")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showTextDialog = false }) {
-                    Text("Cancel")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (editingTextIndex in annotations.indices) {
+                        TextButton(
+                            onClick = {
+                                if (editingTextIndex in annotations.indices) {
+                                    val removed = annotations.removeAt(editingTextIndex)
+                                    undoStack.add(removed)
+                                    selectedTextIndex = -1
+                                    editingTextIndex = -1
+                                }
+                                showTextDialog = false
+                            }
+                        ) {
+                            Text("Delete", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                    TextButton(onClick = { showTextDialog = false }) {
+                        Text("Cancel")
+                    }
                 }
             }
         )
