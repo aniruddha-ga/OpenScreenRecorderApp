@@ -37,6 +37,7 @@ class ConfigManager(private val context: Context) {
         private const val KEY_BRUSH_ENABLED = "brush_enabled"
         private const val KEY_CAMERA_ENABLED = "camera_enabled"
         private const val KEY_SCREENSHOT_ENABLED = "screenshot_enabled"
+        private const val KEY_SCREENSHOT_WITH_DRAWING = "screenshot_with_drawing"
         private const val KEY_BRUSH_COLOR = "brush_color"
         private const val KEY_BRUSH_SIZE = "brush_size"
 
@@ -120,6 +121,10 @@ class ConfigManager(private val context: Context) {
     var isScreenshotEnabled: Boolean
         get() = prefs.getBoolean(KEY_SCREENSHOT_ENABLED, true)
         set(value) = prefs.edit { putBoolean(KEY_SCREENSHOT_ENABLED, value) }
+
+    var isScreenshotWithDrawing: Boolean
+        get() = prefs.getBoolean(KEY_SCREENSHOT_WITH_DRAWING, true)
+        set(value) = prefs.edit { putBoolean(KEY_SCREENSHOT_WITH_DRAWING, value) }
 
     var brushColor: Int
         get() = prefs.getInt(KEY_BRUSH_COLOR, 0xFFFF0000.toInt()) // Default Red

@@ -124,6 +124,7 @@ fun SettingsScreen(
     var isBrushEnabled by remember { mutableStateOf(configManager.isBrushEnabled) }
     var isCameraEnabled by remember { mutableStateOf(configManager.isCameraEnabled) }
     var isScreenshotEnabled by remember { mutableStateOf(configManager.isScreenshotEnabled) }
+    var isScreenshotWithDrawing by remember { mutableStateOf(configManager.isScreenshotWithDrawing) }
     var dynamicColors by remember { mutableStateOf(configManager.isDynamicColorsEnabled) }
     var videoQuality by remember { mutableStateOf(configManager.videoQuality) }
     var themeMode by remember { mutableStateOf(configManager.themeMode) }
@@ -642,6 +643,36 @@ fun SettingsScreen(
                                     configManager.isScreenshotEnabled = checked
                                 }
                             )
+                        }
+
+                        if (isScreenshotEnabled && recordingOverlayEnabled) {
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Include Drawings in Screenshots",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = if (isScreenshotWithDrawing) "With Drawing (Hides brush controls & timings)" else "Without Drawing (Hides drawings, brush controls & timings)",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = isScreenshotWithDrawing,
+                                    onCheckedChange = { checked ->
+                                        isScreenshotWithDrawing = checked
+                                        configManager.isScreenshotWithDrawing = checked
+                                    }
+                                )
+                            }
                         }
                     }
                 }

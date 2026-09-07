@@ -10,6 +10,7 @@ import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.os.*
+import android.util.Log
 import android.util.TypedValue
 import android.view.*
 import android.view.animation.DecelerateInterpolator
@@ -35,6 +36,7 @@ class RecordingOverlayService : Service() {
 
     private val collapseHandler = Handler(Looper.getMainLooper())
     private val collapseRunnable = Runnable { collapseOverlay() }
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     companion object {
         const val ACTION_REFRESH_THEME = "com.openscreenrecorder.app.ACTION_REFRESH_THEME"
@@ -323,12 +325,37 @@ class RecordingOverlayService : Service() {
         binding?.btnScreenshot?.setOnClickListener {
             resetCollapseTimer()
             binding?.root?.visibility = View.INVISIBLE
-            startService(Intent(this, ScreenRecordService::class.java).apply {
-                action = ScreenRecordService.ACTION_TAKE_SCREENSHOT
-            })
-            collapseHandler.postDelayed({
-                binding?.root?.visibility = View.VISIBLE
-            }, 350)
+
+            val configManager = ConfigManager(this)
+            val includeDrawing = configManager.isScreenshotWithDrawing
+
+            if (DrawingOverlayService.isRunning) {
+                DrawingOverlayService.prepareForScreenshot(includeDrawing)
+            }
+
+            if (CameraOverlayService.isRunning) {
+                CameraOverlayService.prepareForScreenshot()
+            }
+
+            try {
+                startService(Intent(this, ScreenRecordService::class.java).apply {
+                    action = ScreenRecordService.ACTION_TAKE_SCREENSHOT
+                })
+            } catch (e: Exception) {
+                Log.e("RecordingOverlayService", "Failed to start service for screenshot: ${e.message}")
+            }
+
+            mainHandler.postDelayed({
+                try {
+                    binding?.root?.visibility = View.VISIBLE
+                    if (DrawingOverlayService.isRunning) {
+                        DrawingOverlayService.restoreAfterScreenshot()
+                    }
+                    if (CameraOverlayService.isRunning) {
+                        CameraOverlayService.restoreAfterScreenshot()
+                    }
+                } catch (_: Exception) {}
+            }, 650)
         }
 
         binding?.btnPause?.setOnClickListener {

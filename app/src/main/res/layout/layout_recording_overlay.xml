@@ -83,17 +83,14 @@
                 android:contentDescription="@string/btn_brush"
                 app:iconSize="20dp"
                 app:iconTint="?attr/colorOnSurfaceVariant"
-                app:icon="@drawable/ic_brush"/>
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnCamera"
-                style="@style/Widget.Material3.Button.IconButton"
-                android:layout_width="44dp"
-                android:layout_height="44dp"
-                android:contentDescription="@string/btn_camera"
-                app:iconSize="20dp"
-                app:iconTint="?attr/colorOnSurfaceVariant"
-                app:icon="@drawable/ic_camera"/>
+                app:icon="@drawable/ic_brush"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                android:padding="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:insetLeft="0dp"
+                android:insetRight="0dp"/>
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnScreenshot"
@@ -103,7 +100,31 @@
                 android:contentDescription="@string/btn_screenshot"
                 app:iconSize="20dp"
                 app:iconTint="?attr/colorOnSurfaceVariant"
-                app:icon="@drawable/ic_screenshot"/>
+                app:icon="@drawable/ic_screenshot"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                android:padding="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:insetLeft="0dp"
+                android:insetRight="0dp"/>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnCamera"
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:contentDescription="@string/btn_camera"
+                app:iconSize="20dp"
+                app:iconTint="?attr/colorOnSurfaceVariant"
+                app:icon="@drawable/ic_camera"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                android:padding="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:insetLeft="0dp"
+                android:insetRight="0dp"/>
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnPause"
@@ -113,7 +134,14 @@
                 android:contentDescription="@string/btn_pause_recording"
                 app:iconSize="20dp"
                 app:iconTint="?attr/colorOnSurfaceVariant"
-                app:icon="@drawable/ic_pause"/>
+                app:icon="@drawable/ic_pause"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                android:padding="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:insetLeft="0dp"
+                android:insetRight="0dp"/>
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnStop"
@@ -125,7 +153,14 @@
                 app:iconSize="20dp"
                 app:iconTint="?attr/colorOnError"
                 android:backgroundTint="?attr/colorError"
-                app:icon="@drawable/ic_stop"/>
+                app:icon="@drawable/ic_stop"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                android:padding="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:insetLeft="0dp"
+                android:insetRight="0dp"/>
         </LinearLayout>
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

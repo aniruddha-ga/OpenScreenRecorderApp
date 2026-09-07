@@ -7,7 +7,10 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
+import java.lang.ref.WeakReference
 import android.view.*
 import android.widget.Button
 import android.widget.EditText
@@ -28,6 +31,29 @@ class DrawingOverlayService : Service() {
         @Volatile
         var isRunning = false
             private set
+
+        @Volatile
+        private var serviceRef: WeakReference<DrawingOverlayService>? = null
+
+        fun prepareForScreenshot(includeDrawing: Boolean) {
+            val service = serviceRef?.get() ?: return
+            service.mainHandler.post {
+                service.toolbarView?.visibility = View.INVISIBLE
+                service.textDialogView?.visibility = View.INVISIBLE
+                service.paletteSubBar?.visibility = View.GONE
+                if (!includeDrawing) {
+                    service.drawingView?.visibility = View.INVISIBLE
+                }
+            }
+        }
+
+        fun restoreAfterScreenshot() {
+            val service = serviceRef?.get() ?: return
+            service.mainHandler.post {
+                service.toolbarView?.visibility = View.VISIBLE
+                service.drawingView?.visibility = View.VISIBLE
+            }
+        }
     }
 
     private var windowManager: WindowManager? = null
@@ -36,6 +62,7 @@ class DrawingOverlayService : Service() {
     private var toolbarView: View? = null
     private var textDialogView: View? = null
     private var paletteSubBar: LinearLayout? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     private lateinit var canvasParams: WindowManager.LayoutParams
     private lateinit var toolbarParams: WindowManager.LayoutParams
@@ -61,6 +88,7 @@ class DrawingOverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        serviceRef = WeakReference(this)
         isRunning = true
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
@@ -540,6 +568,7 @@ class DrawingOverlayService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        serviceRef = null
         isRunning = false
         dismissTextDialog()
         drawingView?.let {

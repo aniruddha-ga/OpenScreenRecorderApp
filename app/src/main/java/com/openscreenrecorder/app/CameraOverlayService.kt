@@ -14,6 +14,8 @@ import android.hardware.camera2.*
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
+import android.os.Looper
+import java.lang.ref.WeakReference
 import android.util.Log
 import android.view.*
 import android.widget.FrameLayout
@@ -35,7 +37,26 @@ class CameraOverlayService : Service() {
         @Volatile
         var isRunning = false
             private set
+
+        @Volatile
+        private var serviceRef: WeakReference<CameraOverlayService>? = null
+
+        fun prepareForScreenshot() {
+            val service = serviceRef?.get() ?: return
+            service.mainHandler.post {
+                service.overlayCard?.visibility = View.INVISIBLE
+            }
+        }
+
+        fun restoreAfterScreenshot() {
+            val service = serviceRef?.get() ?: return
+            service.mainHandler.post {
+                service.overlayCard?.visibility = View.VISIBLE
+            }
+        }
     }
+
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     private var windowManager: WindowManager? = null
     private var overlayCard: MaterialCardView? = null
@@ -56,6 +77,7 @@ class CameraOverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        serviceRef = WeakReference(this)
         isRunning = true
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         cameraManager = getSystemService(CAMERA_SERVICE) as CameraManager
@@ -335,6 +357,7 @@ class CameraOverlayService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        serviceRef = null
         isRunning = false
         closeCamera()
         stopCameraThread()

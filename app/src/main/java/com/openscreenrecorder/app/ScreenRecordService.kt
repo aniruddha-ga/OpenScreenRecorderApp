@@ -37,6 +37,8 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import androidx.core.net.toUri
+import java.util.concurrent.atomic.AtomicBoolean
+import androidx.core.graphics.createBitmap
 
 /*
  * Professional screen recording service.
@@ -81,6 +83,8 @@ class ScreenRecordService : Service() {
     private var virtualDisplay: VirtualDisplay? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private lateinit var configManager: ConfigManager
+
+    @Volatile private var isCapturingScreenshot = false
 
     private var screenWidth = 0
     private var screenHeight = 0
@@ -151,21 +155,25 @@ class ScreenRecordService : Service() {
      * Intercepts service commands to control the recording lifecycle.
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_START -> {
-                val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, -1)
-                val data: Intent? =
-                    intent.getParcelableExtra(EXTRA_DATA, Intent::class.java)
-                if (data != null) startRecordingSession(resultCode, data)
+        try {
+            when (intent?.action) {
+                ACTION_START -> {
+                    val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, -1)
+                    val data: Intent? =
+                        intent.getParcelableExtra(EXTRA_DATA, Intent::class.java)
+                    if (data != null) startRecordingSession(resultCode, data)
+                }
+                ACTION_PAUSE -> pauseRecording()
+                ACTION_RESUME -> resumeRecording()
+                ACTION_TAKE_SCREENSHOT -> captureScreenshot()
+                ACTION_STOP -> {
+                    stopRecording()
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                }
             }
-            ACTION_PAUSE -> pauseRecording()
-            ACTION_RESUME -> resumeRecording()
-            ACTION_TAKE_SCREENSHOT -> captureScreenshot()
-            ACTION_STOP -> {
-                stopRecording()
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
-            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error handling service command: ${e.message}", e)
         }
         return START_NOT_STICKY
     }
@@ -628,54 +636,113 @@ class ScreenRecordService : Service() {
 
     @SuppressLint("WrongConstant")
     private fun captureScreenshot() {
-        val projection = mediaProjection ?: return
+        if (isCapturingScreenshot) {
+            Log.w(TAG, "Screenshot capture already in progress")
+            return
+        }
+
+        val display = virtualDisplay
+        val encoderSurface = inputSurface
+        if (display == null || screenWidth <= 0 || screenHeight <= 0) {
+            Log.w(TAG, "Cannot capture screenshot: VirtualDisplay not ready or invalid dimensions")
+            showToastOnMain("Cannot capture screenshot: Recording surface not ready")
+            return
+        }
+
+        isCapturingScreenshot = true
+
         val handlerThread = HandlerThread("ScreenshotThread").apply { start() }
         val handler = Handler(handlerThread.looper)
 
-        val imageReader = ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 2)
-        var tempDisplay: VirtualDisplay? = null
+        val imageReader = try {
+            ImageReader.newInstance(screenWidth, screenHeight, PixelFormat.RGBA_8888, 2)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create ImageReader: ${e.message}")
+            isCapturingScreenshot = false
+            handlerThread.quitSafely()
+            showToastOnMain("Failed to take screenshot")
+            return
+        }
+
+        val restoreSurface = if (isPaused) null else encoderSurface
+        val isFinished = AtomicBoolean(false)
+
+        val includeDrawing = configManager.isScreenshotWithDrawing
+        if (DrawingOverlayService.isRunning) {
+            DrawingOverlayService.prepareForScreenshot(includeDrawing)
+        }
+        if (CameraOverlayService.isRunning) {
+            CameraOverlayService.prepareForScreenshot()
+        }
+
+        val cleanupRunnable = Runnable {
+            if (isFinished.compareAndSet(false, true)) {
+                try {
+                    display.surface = restoreSurface
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to restore virtual display surface: ${e.message}")
+                }
+                if (DrawingOverlayService.isRunning) {
+                    DrawingOverlayService.restoreAfterScreenshot()
+                }
+                if (CameraOverlayService.isRunning) {
+                    CameraOverlayService.restoreAfterScreenshot()
+                }
+                try { imageReader.close() } catch (_: Exception) {}
+                try { handlerThread.quitSafely() } catch (_: Exception) {}
+                isCapturingScreenshot = false
+            }
+        }
+
+        handler.postDelayed({
+            if (!isFinished.get()) {
+                Log.w(TAG, "Screenshot timed out waiting for image frame")
+                cleanupRunnable.run()
+                showToastOnMain("Screenshot capture timed out")
+            }
+        }, 1000)
 
         imageReader.setOnImageAvailableListener({ reader ->
-            val image = reader.acquireLatestImage()
+            if (isFinished.get()) return@setOnImageAvailableListener
+            val image = try { reader.acquireLatestImage() } catch (_: Exception) { null }
             if (image != null) {
                 try {
                     val planes = image.planes
-                    val buffer = planes[0].buffer
-                    val pixelStride = planes[0].pixelStride
-                    val rowStride = planes[0].rowStride
-                    val rowPadding = rowStride - pixelStride * screenWidth
+                    if (planes.isNotEmpty()) {
+                        val buffer = planes[0].buffer
+                        val pixelStride = planes[0].pixelStride
+                        val rowStride = planes[0].rowStride
 
-                    val bitmap = Bitmap.createBitmap(
-                        screenWidth + rowPadding / pixelStride,
-                        screenHeight,
-                        Bitmap.Config.ARGB_8888
-                    )
-                    bitmap.copyPixelsFromBuffer(buffer)
-                    image.close()
+                        if (pixelStride > 0) {
+                            val widthInPixels = rowStride / pixelStride
+                            val bitmap = createBitmap(widthInPixels, screenHeight)
+                            bitmap.copyPixelsFromBuffer(buffer)
 
-                    val croppedBitmap = if (rowPadding > 0) {
-                        Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight)
-                    } else {
-                        bitmap
+                            val croppedBitmap = if (widthInPixels > screenWidth) {
+                                Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight)
+                            } else {
+                                bitmap
+                            }
+
+                            saveScreenshotToGallery(croppedBitmap)
+                        }
                     }
-
-                    saveScreenshotToGallery(croppedBitmap)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error capturing screenshot: ${e.message}")
+                    Log.e(TAG, "Error processing screenshot image: ${e.message}")
                 } finally {
-                    try { imageReader.close() } catch (_: Exception) {}
-                    try { tempDisplay?.release() } catch (_: Exception) {}
-                    handlerThread.quitSafely()
+                    try { image.close() } catch (_: Exception) {}
+                    cleanupRunnable.run()
                 }
             }
         }, handler)
 
-        tempDisplay = projection.createVirtualDisplay(
-            "ScreenshotDisplay",
-            screenWidth, screenHeight, scaledDensity,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader.surface, null, handler
-        )
+        try {
+            display.surface = imageReader.surface
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to set virtual display surface for screenshot: ${e.message}")
+            cleanupRunnable.run()
+            showToastOnMain("Failed to capture screenshot")
+        }
     }
 
     private fun saveScreenshotToGallery(bitmap: Bitmap) {
@@ -690,15 +757,14 @@ class ScreenRecordService : Service() {
 
         try {
             val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-            uri?.let { targetUri ->
-                contentResolver.openOutputStream(targetUri)?.use { out ->
+            if (uri != null) {
+                contentResolver.openOutputStream(uri)?.use { out ->
                     bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
                 }
-                MediaScannerConnection.scanFile(this, arrayOf(targetUri.path), arrayOf("image/png"), null)
-                contentResolver.notifyChange(targetUri, null)
-                mainHandler.post {
-                    Toast.makeText(applicationContext, "Screenshot saved to gallery", Toast.LENGTH_SHORT).show()
-                }
+                contentResolver.notifyChange(uri, null)
+                showToastOnMain("Screenshot saved to gallery")
+            } else {
+                Log.e(TAG, "Failed to insert screenshot into MediaStore")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save screenshot: ${e.message}")
